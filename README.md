@@ -41,7 +41,13 @@
 Truck Arrives → Existing CCTV Capture → Edge AI / Gemini Vision → ISO OCR → Auto-Routing → TOS Sync
 ```
 
-![Prototype Snippets & Video Demo](image1.png)
+![Prototype Snippets & Video Demo](images/1.png)
+![Alt text for the image](images/2.png) 
+![Alt text for the image](images/3.png) 
+![Alt text for the image](images/4.png) 
+![Alt text for the image](images/5.png) 
+![Alt text for the image](images/6.png) 
+![Alt text for the image](images/7.png) 
 
 ### Key Features Included
 - **Switching Between DP World Global Terminals:** Instantly toggle terminal operations context.
@@ -66,7 +72,7 @@ Truck Arrives → Existing CCTV Capture → Edge AI / Gemini Vision → ISO OCR 
 
 ## 💼 Business Case & Impact
 
-![Business Case Details](image3.png)
+<!-- ![Business Case Details](image3.png) -->
 
 - **CAPEX / OPEX**: Extremely low CAPEX. **$0 spent on new sensors**; utilizes existing CCTV. Primary costs are AWS cloud compute and LLM tokens.
 - **ROI & Savings**: Recovers thousands of lost hours annually. Eliminates 3–5% data errors, saving millions in "shunting" (moving misplaced containers) and claims. Results in a **30% reduction in gate turnaround time**.
@@ -81,7 +87,7 @@ Truck Arrives → Existing CCTV Capture → Edge AI / Gemini Vision → ISO OCR 
 
 ## ✅ Market Analysis & ESG Alignment (Hackathon Guardrails)
 
-![Market Analysis & ESG Alignment](image2.png)
+<!-- ![Market Analysis & ESG Alignment](image2.png) -->
 
 VisionGate actively targets the core Hackathon guardrails:
 
