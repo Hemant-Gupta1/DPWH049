@@ -312,6 +312,22 @@ DIGITAL SIGNATURE
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# PER-TERMINAL MOCK STATS
+# Each terminal has distinct daily throughput reflecting real-world scale
+# (Jebel Ali is DP World's largest hub; Caucedo is a mid-size gateway).
+# ─────────────────────────────────────────────────────────────────────────────
+TERMINAL_STATS = {
+    "DP World Jebel Ali (Dubai)":           {"containers_today": "3,412", "gate_time": "14 sec",  "co2": "45.2", "idling": "1,240", "hazmat": "12"},
+    "DP World Nhava Sheva (Mumbai)":        {"containers_today": "2,187", "gate_time": "16 sec",  "co2": "31.7", "idling": "894",   "hazmat": "8"},
+    "DP World London Gateway":              {"containers_today": "1,053", "gate_time": "18 sec",  "co2": "19.4", "idling": "512",   "hazmat": "4"},
+    "DP World Port Qasim (Karachi)":        {"containers_today": "1,628", "gate_time": "15 sec",  "co2": "28.9", "idling": "743",   "hazmat": "6"},
+    "DP World Caucedo (Dominican Rep.)":    {"containers_today": "847",   "gate_time": "19 sec",  "co2": "14.1", "idling": "381",   "hazmat": "3"},
+}
+
+# Fallback in case a new terminal is added without a stats entry
+_stats = TERMINAL_STATS.get(terminal, {"containers_today": "N/A", "gate_time": "N/A", "co2": "N/A", "idling": "N/A", "hazmat": "N/A"})
+
+# ─────────────────────────────────────────────────────────────────────────────
 # PAGE 1 – GLOBAL DASHBOARD & ESG
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -319,7 +335,7 @@ def page_dashboard():
     st.markdown("# 🌐 Global Operations Dashboard")
     st.markdown(
         f"**Terminal:** `{terminal}` &nbsp;|&nbsp; **Live Feed** 🟢 &nbsp;|&nbsp; "
-        f"**Containers processed today:** `1,847`"
+        f"**Containers processed today:** `{_stats['containers_today']}`"
     )
     st.markdown("---")
 
