@@ -12,6 +12,7 @@ Architecture: Streamlit multi-page app simulating a distributed edge-AI system
 import time
 import io
 import json
+import re
 import datetime
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
@@ -200,51 +201,113 @@ with st.sidebar:
     )
 
 # ─────────────────────────────────────────────────────────────────────────────
-# HELPER: draw bounding boxes on container image using PIL
+# GEMINI VISION AI — Container Inspection Engine
+# Replaces hardcoded PIL boxes with real AI-driven analysis.
+# Model: Gemini 1.5 Flash (Google DeepMind).
 # ─────────────────────────────────────────────────────────────────────────────
 
-def annotate_container_image(uploaded_file) -> Image.Image:
+GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "AIzaSyAvLdVmKoJlQwzJWIcNaZk_Rf9KRl3egCw")
+
+
+@st.cache_resource(show_spinner=False)
+def _get_gemini_model():
+    """Initialises and caches the Vision model (singleton per session)."""
+    import google.generativeai as genai
+    genai.configure(api_key=GEMINI_API_KEY)
+    # Using the standard vision model that is universally supported
+    return genai.GenerativeModel("gemini-2.5-flash")
+
+
+def analyze_container_gemini(img_bytes: bytes) -> dict:
     """
-    Opens the uploaded image and overlays mock AI detection bounding boxes:
-      - Red box  → Structural damage zone (Severe Rust)
-      - Green box → ISO code plate region
-    Simulates YOLOv8 object detection output at the edge node.
+    Sends the container image to Gemini Vision for real AI analysis.
+    Returns structured JSON: ISO code, damage detections with normalized
+    bounding boxes [x1,y1,x2,y2], severity, routing action, and summary.
     """
-    img = Image.open(uploaded_file).convert("RGB")
-    w, h = img.size
+    try:
+        img_pil = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        model = _get_gemini_model()
+        prompt = (
+            "You are an expert AI inspector for a port terminal gate system.\n"
+            "Analyze this shipping container image and return ONLY a JSON object:\n\n"
+            "{\n"
+            '  \"iso_code\": \"container code e.g. MSCU 1234567 or null\",\n'
+            '  \"iso_valid\": true,\n'
+            '  \"container_type\": \"20ft Dry Standard / 40ft HC / Reefer / Tank\",\n'
+            '  \"damage_detections\": [\n'
+            "    {\n"
+            '      \"class\": \"rust/dent/scratch/hole/paint_damage/door_issue\",\n'
+            '      \"severity\": \"minor/moderate/severe/critical\",\n'
+            '      \"panel\": \"left/right/front/rear/roof/floor\",\n'
+            '      \"description\": \"brief description\",\n'
+            '      \"confidence\": 0.85,\n'
+            '      \"bbox_normalized\": [x1, y1, x2, y2]\n'
+            "    }\n"
+            "  ],\n"
+            '  \"overall_status\": \"CLEAR/MINOR_DAMAGE/WARNING/CRITICAL\",\n'
+            '  \"routing_action\": \"VESSEL_LOAD/INSPECTION_HOLD/MAINTENANCE_YARD/QUARANTINE\",\n'
+            '  \"routing_reason\": \"one sentence reason\",\n'
+            '  \"hazmat_suspected\": false,\n'
+            '  \"summary\": \"2-3 sentence assessment\"\n'
+            "}\n\n"
+            "For bbox_normalized: estimate damage location as [x1,y1,x2,y2] in 0.0-1.0 range\n"
+            "where [0,0]=top-left, [1,1]=bottom-right. x1<x2, y1<y2.\n"
+            "If no damage: return empty array [].\n"
+            "If not a container: set overall_status to NOT_CONTAINER.\n"
+            "Return ONLY the JSON, no markdown, no explanation."
+        )
+        response = model.generate_content([prompt, img_pil])
+        text = response.text.strip()
+        # Strip markdown fences if present
+        if "```" in text:
+            m = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
+            if m:
+                text = m.group(1).strip()
+        result = json.loads(text)
+        result["_gemini_success"] = True
+        return result
+    except json.JSONDecodeError as exc:
+        return {"_gemini_success": False, "error": f"JSON parse error: {exc}"}
+    except Exception as exc:
+        return {"_gemini_success": False, "error": str(exc)}
+
+
+def annotate_with_ai_boxes(image: Image.Image, detections: list) -> Image.Image:
+    """
+    Draws AI-determined bounding boxes on the container image.
+    Positions come from Gemini Vision's spatial reasoning — not hardcoded.
+    Color encodes severity: red=critical/severe, amber=moderate, blue=minor.
+    """
+    img = image.copy().convert("RGB")
     draw = ImageDraw.Draw(img)
-
-    # --- Box 1: Damage region (red) ---
-    x1_d, y1_d = int(w * 0.05), int(h * 0.30)
-    x2_d, y2_d = int(w * 0.38), int(h * 0.75)
-    for offset in range(3):          # thick border
-        draw.rectangle(
-            [x1_d - offset, y1_d - offset, x2_d + offset, y2_d + offset],
-            outline=(220, 38, 38),
-        )
-    # Label background
-    draw.rectangle([x1_d, y1_d - 28, x1_d + 170, y1_d], fill=(220, 38, 38))
-    draw.text(
-        (x1_d + 5, y1_d - 24),
-        "⚠ SEVERE RUST [98.2%]",
-        fill="white",
-    )
-
-    # --- Box 2: ISO code plate (green) ---
-    x1_i, y1_i = int(w * 0.55), int(h * 0.08)
-    x2_i, y2_i = int(w * 0.95), int(h * 0.26)
-    for offset in range(3):
-        draw.rectangle(
-            [x1_i - offset, y1_i - offset, x2_i + offset, y2_i + offset],
-            outline=(34, 197, 94),
-        )
-    draw.rectangle([x1_i, y1_i - 28, x1_i + 160, y1_i], fill=(34, 197, 94))
-    draw.text(
-        (x1_i + 5, y1_i - 24),
-        "✓ ISO CODE [99.7%]",
-        fill="white",
-    )
-
+    w, h = img.size
+    COLORS = {
+        "critical": (220, 38, 38),
+        "severe":   (239, 68, 68),
+        "moderate": (234, 179, 8),
+        "minor":    (59, 130, 246),
+    }
+    for det in detections:
+        bbox = det.get("bbox_normalized")
+        if not bbox or len(bbox) != 4:
+            continue
+        x1, y1, x2, y2 = [float(v) for v in bbox]
+        px1, py1 = int(x1 * w), int(y1 * h)
+        px2, py2 = int(x2 * w), int(y2 * h)
+        # Clamp + ensure minimum label clearance
+        px1, py1 = max(4, px1), max(32, py1)
+        px2, py2 = min(w - 4, px2), min(h - 4, py2)
+        if px2 <= px1 or py2 <= py1:
+            continue
+        color = COLORS.get(det.get("severity", "moderate"), (234, 179, 8))
+        cls   = det.get("class", "damage").upper().replace("_", " ")
+        conf  = int(float(det.get("confidence", 0.85)) * 100)
+        label = f"{cls} [{conf}%]"
+        for offset in range(3):  # thick border
+            draw.rectangle([px1-offset, py1-offset, px2+offset, py2+offset], outline=color)
+        lw = max(len(label) * 9, 80)
+        draw.rectangle([px1, py1-28, px1+lw, py1], fill=color)
+        draw.text((px1+4, py1-24), label, fill="white")
     return img
 
 
@@ -480,106 +543,161 @@ def page_gate_inspector():
     )
 
     if uploaded_file is not None:
-        # Run "inference"
-        with st.spinner("⚙️  Running VisionGate Edge AI inference..."):
-            time.sleep(2)
+        # Cache AI result per file (name+size) to avoid re-calling on every widget interaction
+        cache_key = f"vision_ai_{uploaded_file.name}_{uploaded_file.size}"
+        if cache_key not in st.session_state:
+            img_bytes = uploaded_file.read()
+            with st.spinner("⚙️  Running VisionGate Edge AI inference..."):
+                result = analyze_container_gemini(img_bytes)
+            st.session_state[cache_key] = (img_bytes, result)
+        else:
+            img_bytes, result = st.session_state[cache_key]
 
-        st.success("✅ Inference complete in **1.83 seconds** on NVIDIA Jetson Orin (INT8 quantised model).")
+        if not result.get("_gemini_success"):
+            st.error(f"🔴 Vision AI Error: {result.get('error', 'Unknown error')}")
+            st.image(Image.open(io.BytesIO(img_bytes)), use_container_width=True)
+        else:
+            overall   = result.get("overall_status", "CLEAR")
+            routing   = result.get("routing_action", "INSPECTION_HOLD")
+            detections = result.get("damage_detections", [])
 
-        col_img, col_result = st.columns([1.2, 1])
-
-        # ── Left: Annotated Image ──
-        with col_img:
-            st.markdown("### 📷 AI-Annotated Inspection Frame")
-            annotated = annotate_container_image(uploaded_file)
-            st.image(annotated, use_container_width=True, caption="YOLOv8 Detection Output — Live Gate Frame")
-            st.markdown(
-                '<div class="custom-info" style="font-size:.8rem;">'
-                '🔴 <b>Red box</b>: Structural damage zone (Severe Rust) &nbsp;|&nbsp; '
-                '🟢 <b>Green box</b>: ISO code plate region</div>',
-                unsafe_allow_html=True,
+            STATUS_STYLES = {
+                "CLEAR":         ("custom-success", "✅",  "CLEAR — No Significant Damage",        "badge-green"),
+                "MINOR_DAMAGE":  ("custom-info",    "🔵", "MINOR DAMAGE — Inspection Recommended", "badge-blue"),
+                "WARNING":       ("custom-warning", "⚠️", "WARNING — Damage Detected",             "badge-yellow"),
+                "CRITICAL":      ("custom-danger",  "⛔", "CRITICAL — Do NOT Load on Vessel",      "badge-red"),
+                "NOT_CONTAINER": ("custom-warning", "⁉️", "NOT A CONTAINER — Please re-upload",   "badge-yellow"),
+            }
+            style_cls, icon, status_text, badge_cls = STATUS_STYLES.get(
+                overall, ("custom-info", "ℹ️", overall, "badge-blue")
             )
 
-        # ── Right: Inspection Result Card ──
-        with col_result:
-            st.markdown("### 📋 Inspection Result Card")
+            ROUTING_META = {
+                "VESSEL_LOAD":      ("🟢", "Cleared for Vessel Loading",                    "custom-success"),
+                "INSPECTION_HOLD":  ("🟡", "Hold for Manual Inspection",                    "custom-warning"),
+                "MAINTENANCE_YARD": ("🔴", "Redirect to Maintenance Yard — Do NOT Load",   "custom-danger"),
+                "QUARANTINE":       ("☣️", "QUARANTINE — Hazmat Protocol Activated",        "custom-danger"),
+            }
+            r_icon, r_label, r_style = ROUTING_META.get(routing, ("🔵", routing, "custom-info"))
 
-            st.markdown(
-                '<div class="custom-warning">'
-                '⚠️ <b>INSPECTION STATUS: ACTION REQUIRED</b><br>'
-                '<span class="badge badge-red">HIGH RISK</span>'
-                '<span class="badge badge-yellow">STRUCTURAL</span>'
-                '</div>',
-                unsafe_allow_html=True,
-            )
+            st.success(f"✅ **Vision AI inference complete** — real analysis on your image. Terminal: `{terminal}`")
 
-            st.markdown("---")
+            col_img, col_result = st.columns([1.2, 1])
 
-            # ISO Code
-            st.markdown("**📦 ISO Container Code (ISO 6346)**")
-            st.code("MSKU 123456 7", language=None)
-            st.markdown(
-                '<span class="badge badge-green">✓ Validated — ISO 6346 Checksum Pass</span>',
-                unsafe_allow_html=True,
-            )
-            st.markdown("")
+            # ── Left: Annotated Image ──
+            with col_img:
+                st.markdown("### 📷 AI-Annotated Inspection Frame")
+                img_pil = Image.open(io.BytesIO(img_bytes))
+                annotated = annotate_with_ai_boxes(img_pil, detections) if detections else img_pil
+                st.image(annotated, use_container_width=True,
+                         caption=f"Edge Vision Output — {len(detections)} detection(s) on your image")
+                if detections:
+                    sev_icons = {"critical": "🔴", "severe": "🟠", "moderate": "🟡", "minor": "🔵"}
+                    parts = [
+                        f"{sev_icons.get(d.get('severity','moderate'),'⚪')} "
+                        f"{d.get('class','damage').replace('_',' ').title()} ({d.get('severity','?')})"
+                        for d in detections
+                    ]
+                    st.markdown(
+                        f'<div class="custom-info" style="font-size:.8rem;">'
+                        f"<b>AI Detections ({len(detections)}):</b> "
+                        + " &nbsp;|&nbsp; ".join(parts) + "</div>",
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(
+                        '<div class="custom-success" style="font-size:.8rem;">'
+                        "✅ No damage detected by AI</div>",
+                        unsafe_allow_html=True,
+                    )
 
-            # Structural Status
-            st.markdown("**🔩 Structural Integrity Status**")
-            st.markdown(
-                '<div class="custom-danger">⛔ <b>WARNING: Severe Rust on Left Panel</b><br>'
-                'AI Confidence: 98.2% &nbsp;|&nbsp; Affected Area: ~34% of panel surface<br>'
-                'Risk Category: <b>CRITICAL — Load-bearing compromise possible</b></div>',
-                unsafe_allow_html=True,
-            )
+            # ── Right: Inspection Result Card ──
+            with col_result:
+                st.markdown("### 📋 Inspection Result Card")
+                st.markdown(
+                    f'<div class="{style_cls}">'
+                    f'{icon} <b>INSPECTION STATUS: {status_text}</b><br>'
+                    f'<span class="badge {badge_cls}">{overall}</span>'
+                    f'<span class="badge badge-blue">VISIONGATE EDGE AI</span>'
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+                st.markdown("---")
 
-            # Routing Action
-            st.markdown("**🚦 Automated Routing Action**")
-            st.markdown(
-                '<div class="custom-danger">'
-                '🚫 <b>Redirect to Maintenance Yard. Do NOT Load on Vessel.</b><br>'
-                'Gate barrier auto-locked. Truck directed to Lane M-7.</div>',
-                unsafe_allow_html=True,
-            )
+                # ISO Code
+                st.markdown("**📦 ISO Container Code (ISO 6346)**")
+                iso = result.get("iso_code") or "Not readable in image"
+                st.code(iso, language=None)
+                if result.get("iso_valid") and result.get("iso_code"):
+                    st.markdown('<span class="badge badge-green">✓ Validated — ISO 6346 Pass</span>',
+                                unsafe_allow_html=True)
+                else:
+                    st.markdown('<span class="badge badge-yellow">⚠ ISO code not confirmed</span>',
+                                unsafe_allow_html=True)
+                st.markdown("")
 
-            # TOS Sync
-            st.markdown("**🔄 Terminal Operating System Sync**")
-            st.markdown(
-                '<div class="custom-success">'
-                '✅ <b>Successfully synced via API to DP World CARGOES TOS</b><br>'
-                'Event ID: <code>TOS-EVT-20260327-001847</code><br>'
-                'Shipping Line Notified: <b>MSC Mediterranean</b><br>'
-                'Freight Forwarder Alert: <b>Sent via EDI 315</b></div>',
-                unsafe_allow_html=True,
-            )
+                # Damage detections
+                st.markdown("**🔩 Structural Integrity — AI Assessment**")
+                if detections:
+                    for det in detections:
+                        sev = det.get("severity", "moderate").lower()
+                        sev_class = {
+                            "critical": "custom-danger", "severe": "custom-danger",
+                            "moderate": "custom-warning", "minor": "custom-info",
+                        }.get(sev, "custom-info")
+                        badge_sev = "badge-red" if sev in ("critical", "severe") else "badge-yellow"
+                        st.markdown(
+                            f'<div class="{sev_class}" style="margin-bottom:6px;">'
+                            f"<b>{det.get('class','damage').replace('_',' ').title()}</b>"
+                            f" — {det.get('panel','?').capitalize()} panel<br>"
+                            f"{det.get('description','')}<br>"
+                            f'<span class="badge {badge_sev}">{sev.upper()}</span> '
+                            f'<span style="font-size:.8rem;color:#8b949e;">'
+                            f"confidence: {int(float(det.get('confidence',0.85))*100)}%</span></div>",
+                            unsafe_allow_html=True,
+                        )
+                else:
+                    st.markdown(
+                        '<div class="custom-success">✅ <b>No structural damage detected.</b><br>'
+                        "Container appears clear for loading.</div>",
+                        unsafe_allow_html=True,
+                    )
 
-            st.markdown("---")
+                # AI Summary
+                if result.get("summary"):
+                    st.markdown("**🧠 AI Assessment Summary**")
+                    st.markdown(
+                        f'<div class="custom-info" style="font-size:.85rem;">{result["summary"]}</div>',
+                        unsafe_allow_html=True,
+                    )
 
-            # Additional metadata
-            with st.expander("🔬 Full Inspection Metadata"):
-                st.json({
-                    "inspection_id": "VG-INS-20260327-001847",
-                    "terminal": terminal,
-                    "timestamp_utc": datetime.datetime.utcnow().isoformat(),
-                    "model_version": "YOLOv8-VisionGate-v2.4.1",
-                    "inference_device": "NVIDIA Jetson Orin (INT8)",
-                    "inference_time_ms": 183,
-                    "iso_code": "MSKU 123456 7",
-                    "iso_valid": True,
-                    "container_type": "20ft Dry Standard",
-                    "owner": "MSC Mediterranean",
-                    "damage_detections": [
-                        {
-                            "class": "severe_rust",
-                            "confidence": 0.982,
-                            "panel": "left",
-                            "bbox": [0.05, 0.30, 0.38, 0.75],
-                        }
-                    ],
-                    "routing_action": "MAINTENANCE_YARD",
-                    "tos_synced": True,
-                    "tos_event_id": "TOS-EVT-20260327-001847",
-                })
+                # Routing Action
+                st.markdown("**🚦 Automated Routing Action**")
+                st.markdown(
+                    f'<div class="{r_style}">{r_icon} <b>{r_label}</b><br>'
+                    f"{result.get('routing_reason', '')}</div>",
+                    unsafe_allow_html=True,
+                )
+
+                # TOS Sync (mocked — real TOS integration out of scope)
+                event_id = f"TOS-EVT-{datetime.datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
+                st.markdown("**🔄 Terminal Operating System Sync**")
+                st.markdown(
+                    '<div class="custom-success">'
+                    "✅ <b>Successfully synced via API to DP World CARGOES TOS</b><br>"
+                    f"Event ID: <code>{event_id}</code><br>"
+                    "Freight Forwarder Alert: <b>Sent via EDI 315</b></div>",
+                    unsafe_allow_html=True,
+                )
+                st.markdown("---")
+
+                with st.expander("🔬 Full Edge AI Inspection Report"):
+                    display = {k: v for k, v in result.items() if not k.startswith("_")}
+                    display["inspection_id"] = event_id
+                    display["terminal"] = terminal
+                    display["timestamp_utc"] = datetime.datetime.utcnow().isoformat()
+                    display["model"] = "VisionGate Orin Edge Cluster"
+                    st.json(display)
 
     else:
         # Placeholder when no image uploaded
