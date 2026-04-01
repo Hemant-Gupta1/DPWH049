@@ -1,0 +1,33 @@
+# ─── Environment & Secrets ───
+.env
+.streamlit/secrets.toml
+
+# ─── Python ───
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# ─── Virtual Environment ───
+venv/
+.venv/
+env/
+
+# ─── Database ───
+*.db
+
+# ─── IDE ───
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ─── OS ───
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── Distribution ───
+dist/
+build/
+*.egg-info/

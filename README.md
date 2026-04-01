@@ -119,9 +119,9 @@ DP World operates in **70+ countries**. VisionGate is built for global ubiquity 
 ├───────────────┴───────────────┴──────────────┴─────────────────┤
 │                   Simulated Backend Layer                       │
 │  ┌──────────────┐  ┌─────────────────┐  ┌────────────────────┐ │
-│  │  PIL/YOLOv8  │  │  LLM Copilot    │  │  TOS API (Mocked)  │ │
-│  │  (Bounding   │  │  (RAG Pipeline) │  │  CARGOES v4.2      │ │
-│  │   Boxes)     │  │  Keyword-based  │  │  EDI 315 / REST    │ │
+│  │  PIL/YOLOv8  │  │  Gemini LLM     │  │  SQLite Database   │ │
+│  │  (Bounding   │  │  (Yard Copilot) │  │  (container_logs)  │ │
+│  │   Boxes)     │  │  (RAG w/ DB)    │  │  Local DB Storage  │ │
 │  └──────────────┘  └─────────────────┘  └────────────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -147,28 +147,25 @@ Truck → Gate Cameras (4x) → NVIDIA Jetson Orin (Edge Node)
 ## 🔧 Feature Breakdown
 
 ### Page 1 — Global Dashboard (ESG)
-- **Real-time KPI cards**: Gate queue time (14s vs 5-min industry avg), CO₂ prevented (45.2 Tons/month), truck idling hours saved (1,240 hrs/month), hazmat leaks prevented (12)
-- **ESG Gauges**: Progress bars for carbon, safety, and efficiency targets
-- **Hourly throughput chart**: 24-hour bar chart with pandas + Streamlit charting
-- **Data table**: Full 24-hour operational data export
+- **Dynamic Database Metrics**: Real-time DB lookup for total containers processed, real idling saved, and true Scope 3 CO₂ prevented.
+- **ESG Gauges**: Progress bars for carbon, safety, and efficiency targets.
+- **Hourly throughput chart**: 24-hour bar chart with pandas + Streamlit charting.
 
 ### Page 2 — Gate Inspector (Vision AI)
+- **Database Persistence**: Fully persists analysis (iso_code, damage_status, severity, routing) to SQLite.
 - **Image uploader**: JPG/PNG container photo upload
-- **PIL bounding boxes**: Dynamic red (damage) and green (ISO code) annotation overlays with confidence scores
-- **Inspection Result Card**: ISO 6346 validation, structural status, auto-routing decision, TOS sync confirmation
-- **Metadata JSON**: Full AI inference metadata including model version, inference time, damage coordinates
+- **PIL bounding boxes**: Dynamic red (damage) and green (ISO code) annotation overlays with Gemini Vision's rich metadata.
+- **Inspection Result Card**: ISO 6346 validation, structural status, auto-routing decision.
 
 ### Page 3 — Yard Copilot (AI Chat)
-- **Streamlit native chat** (`st.chat_message` / `st.chat_input`)
-- **Contextual AI responses**: Query routing for damage, queue, hazmat, vessel loading, ESG, and reports
-- **Quick prompt buttons**: One-click common queries for Yard Planners
-- **Session persistence**: Chat history maintained throughout session
+- **Real Gemini LLM Chat**: Yard Copilot responds to contextual queries using `gemini-1.5-flash`.
+- **System Prompt RAG**: The LLM is primed dynamically with full context from the SQLite database.
+- **Streamlit native chat** integrated (`st.chat_message` / `st.chat_input`).
 
 ### Page 4 — Compliance Reports
-- **Download Gate Audit Report**: UTF-8 text report with inspection log, compliance summary, digital signature
-- **Metrics table**: 1,744 auto-generated reports, 14 disputes resolved
-- **Regulatory framework**: ISO 6346, SOLAS VII, IMO FAL, IMDG compliance cards
-- **Live Audit Log**: Last 8 inspection entries with status, routing, and TOS sync
+- **Download Gate Audit Report (PDF)**: Generates a professional, legally-defensible PDF document using `fpdf2` directly from the SQLite database.
+- **Live Audit Log**: Renders a live Pandas dataframe fetched straight from the edge database.
+- **Regulatory framework**: ISO 6346, SOLAS VII, IMO FAL, IMDG compliance cards.
 
 ---
 
@@ -177,12 +174,12 @@ Truck → Gate Cameras (4x) → NVIDIA Jetson Orin (Edge Node)
 | Category | Technology | Purpose |
 |---|---|---|
 | **Frontend** | Streamlit 1.35+ | Multi-page web app, native chat UI |
+| **Database** | SQLite + python-dotenv | Secure local persistence of terminal records |
 | **Image Processing** | Pillow (PIL) 10+ | Dynamic bounding box annotation on container images |
-| **Data** | Pandas 2.0+ | Tabular data, charts, audit logs |
-| **Vision AI** | Gemini 2.5 Flash API  | Real-time container damage detection + ISO OCR |
+| **Data** | Pandas 2.0+ | Tabular data fetched from local DB |
+| **AI / LLM** | Gemini 1.5/2.5 Flash API  | GenAI for OCR, structural damage, and conversational Yard Copilot |
+| **Reporting** | fpdf2 | Professional PDF report generation for audit compliance |
 | **Styling** | Custom CSS | Dark mode, glassmorphism, gradient cards |
-| **Reporting** | Python I/O | Audit report generation + download |
-| **Language** | Python 3.9+ | Core application logic |
 
 ### Production-Addition Stack (Not in Prototype)
 | Component | Technology |
@@ -243,7 +240,15 @@ You should see `(venv)` at the start of your terminal prompt.
 
 ---
 
-### Step 3 — Install Dependencies
+### Step 3 — Setup Environment Variables
+
+1. Create a `.env` file in the root folder.
+2. Add your Gemini API Key manually like this:
+   ```env
+   GEMINI_API_KEY=your_actual_api_key_here
+   ```
+
+### Step 4 — Install Dependencies
 
 ```bash
 pip install -r requirements.txt
@@ -251,8 +256,10 @@ pip install -r requirements.txt
 
 This installs:
 - `streamlit` — web application framework
-- `Pillow` — image processing for AI bounding boxes
-- `pandas` — data tables and charts
+- `Pillow` — image processing
+- `pandas` — data manipulation
+- `python-dotenv` — secure environment variable loading
+- `fpdf2` — PDF report generation
 
 **Expected output:**
 ```
@@ -520,12 +527,14 @@ streamlit run app.py --server.port 8502
 
 ```text
 VisionGate-AI/
-├── app.py                  # Main Python Streamlit application containing all UI and AI logic
-├── requirements.txt        # Python dependencies (Streamlit, Pillow, google-generativeai, Pandas)
+├── app.py                  # Main Python Streamlit application containing UI and logic
+├── db_utils.py             # SQLite DB layer handling persistence and live metrics
+├── visiongate.db           # Local SQLite database (Auto-generated on first run)
+├── requirements.txt        # Full updated dependencies list including fpdf2
 ├── README.md               # Extensive project documentation
-├── .streamlit/             # Streamlit configuration folder
-│   └── secrets.toml        # Environment variables (Gemini API Key)
-└── venv/                   # Local Python virtual environment
+├── .env                    # Secure API Key environment variables (ignored by Git)
+├── .gitignore              # Ignores sensitive data (DB files, environment variables)
+└── .streamlit/             # Streamlit specific configuration and styling
 ```
 
 ---
