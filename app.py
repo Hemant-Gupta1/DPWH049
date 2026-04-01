@@ -22,6 +22,9 @@ from dotenv import load_dotenv
 import db_utils
 from fpdf import FPDF
 
+# IST timezone (UTC+5:30)
+IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+
 # Initialize database
 db_utils.init_db()
 load_dotenv()
@@ -201,7 +204,7 @@ with st.sidebar:
         f"""
         <div style='font-size:.78rem; color:#8b949e;'>
         📡 <b>Terminal:</b> {terminal.split('(')[0].strip()}<br>
-        🕒 <b>UTC:</b> {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M')}<br>
+        🕒 <b>IST:</b> {datetime.datetime.now(IST).strftime('%Y-%m-%d %H:%M')}<br>
         🟢 <b>System Status:</b> Operational<br>
         🏗️ <b>TOS Engine:</b> CARGOES v4.2
         </div>
@@ -322,8 +325,8 @@ def annotate_with_ai_boxes(image: Image.Image, detections: list) -> Image.Image:
 
 def build_audit_pdf_bytes(terminal: str) -> bytes:
     """Generates a professional PDF audit report using real DB data and fpdf2."""
-    now = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
-    report_id = f"VG-{datetime.datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+    now = datetime.datetime.now(IST).strftime("%Y-%m-%d %H:%M IST")
+    report_id = f"VG-{datetime.datetime.now(IST).strftime('%Y%m%d%H%M%S')}"
     
     # Fetch real live data
     logs = db_utils.fetch_logs_by_location(terminal)
@@ -723,7 +726,7 @@ def page_gate_inspector():
                 )
 
                 # TOS Sync (mocked — real TOS integration out of scope)
-                event_id = f"TOS-EVT-{datetime.datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
+                event_id = f"TOS-EVT-{datetime.datetime.now(IST).strftime('%Y%m%d-%H%M%S')}"
                 st.markdown("**🔄 Terminal Operating System Sync**")
                 st.markdown(
                     '<div class="custom-success">'
@@ -738,7 +741,7 @@ def page_gate_inspector():
                     display = {k: v for k, v in result.items() if not k.startswith("_")}
                     display["inspection_id"] = event_id
                     display["terminal"] = terminal
-                    display["timestamp_utc"] = datetime.datetime.utcnow().isoformat()
+                    display["timestamp_ist"] = datetime.datetime.now(IST).isoformat()
                     display["model"] = "VisionGate Orin Edge Cluster"
                     st.json(display)
 
@@ -1043,7 +1046,7 @@ def page_compliance_reports():
         st.download_button(
             label="📥 Generate & Download Gate Audit Report",
             data=report_bytes,
-            file_name=f"VisionGate_Audit_{terminal[:3].upper()}_{datetime.datetime.utcnow().strftime('%Y%m%d_%H%M')}.pdf",
+            file_name=f"VisionGate_Audit_{terminal[:3].upper()}_{datetime.datetime.now(IST).strftime('%Y%m%d_%H%M')}.pdf",
             mime="application/pdf",
             help="Cryptographically signed PDF audit report.",
         )

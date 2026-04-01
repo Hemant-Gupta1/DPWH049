@@ -16,6 +16,9 @@ import sqlite3
 import datetime
 import os
 
+# IST timezone (UTC+5:30) — used for all timestamps
+IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+
 # ─── Database path (co-located with the app) ─────────────────────────────────
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "visiongate.db")
 
@@ -84,7 +87,7 @@ def insert_log(
         Row ID of the newly inserted record.
     """
     if timestamp is None:
-        timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
 
     conn = _get_connection()
     cursor = conn.execute(
@@ -115,7 +118,7 @@ def fetch_all_logs() -> list[dict]:
 
 def fetch_logs_today() -> list[dict]:
     """Returns today's container_logs records (UTC date), newest first."""
-    today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+    today = datetime.datetime.now(IST).strftime("%Y-%m-%d")
     conn = _get_connection()
     rows = conn.execute(
         "SELECT * FROM container_logs WHERE timestamp LIKE ? ORDER BY id DESC",
