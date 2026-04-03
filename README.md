@@ -657,7 +657,7 @@ Dual-View Container Image Upload (2 images = 1 container)
 
 ## 🚀 The REAL ML Stack (Path to Production)
 
-**🎙️ Hackathon Pitch / What to say to the judges:**
+<!-- **🎙️ Hackathon Pitch / What to say to the judges:** -->
 We used the Gemini API to simulate the end-to-end vision pipeline. However, for real-world production at a DP World terminal, we propose a decoupled Edge AI architecture. We cannot rely on cloud latency for physical gate operations. In production, the heavy lifting of Computer Vision happens locally on edge servers at the gate using YOLOv8 for real-time damage detection and PaddleOCR for ISO code extraction. The LLM is only used at the end of the pipeline to translate the structured data into human-readable routing actions for the Yard Copilot."
 
 ### Step 1: The Vision Layer (Runs on the Edge/Gate Camera)
