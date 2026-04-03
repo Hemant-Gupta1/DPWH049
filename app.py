@@ -507,13 +507,24 @@ def page_dashboard():
 
     # ── KPI Row 2: ESG & Safety ──
     st.markdown("### 🌿 ESG & Safety Impact")
-    dc1, dc2, dc3, dc4 = st.columns(4)
+    dc1, dc2, dc3, dc4, dc5 = st.columns(5)
+    
     dc1.metric(
         label="🚛 Truck Idling Saved",
         value=f"{db_stats['idling_hours_saved']} hrs",
         help="Calculated as 5 mins saved per scanned container."
     )
+    
+    # Calculate Diesel Fuel Saved (3.5 Liters per hour of idling)
+    diesel_saved = round(db_stats['idling_hours_saved'] * 3.5, 1)
+    
     dc2.metric(
+        label="⛽ Diesel Fuel Saved",
+        value=f"{diesel_saved} L",
+        help="Calculated assuming an average consumption of 3.5 Liters of diesel fuel per hour of commercial truck engine idling."
+    )
+    
+    dc3.metric(
         label="🌱 CO₂ Prevented",
         value=f"{db_stats['co2_tons_saved']} Tons",
         help="Calculated as 10 kg CO₂ per idling hour saved."
@@ -522,13 +533,14 @@ def page_dashboard():
     # Calculate Trees Equivalent here for the top grid
     trees_eq_top = int(db_stats['co2_tons_saved'] * 55)
     
-    dc3.metric(
+    dc4.metric(
         label="🌲 Trees Equivalent",
         value=f"~{trees_eq_top} Trees",
         help="Calculated as ~55 mature trees absorbing 1 Ton of CO₂. Based on the EPA's carbon sequestration assumptions."
     )
-    dc4.metric(
-        label="☣️ High-Severity Stops",
+    
+    dc5.metric(
+        label="☣️ Hazmat Stops",
         value=f"{db_stats['high_severity']} units",
         help="Critical structural damage or hazmat leaks halted before yard entry."
     )
