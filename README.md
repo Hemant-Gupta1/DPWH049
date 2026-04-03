@@ -55,7 +55,6 @@ Truck Arrives → Dual-Camera Capture (Left + Right Views) → Edge AI / Gemini 
 ### Key Features Included
 - **DP World CARGOES Integration:** Native simulation of live sync with CARGOES TOS and BoxBay smart routing.
 - **Switching Between DP World Global Terminals:** Instantly toggle terminal operations context.
-- **Multi-Language Interface Support:** Extensible localization (English, Arabic, Hindi) bridging global operators.
 - **Our World, Our Future - Impact Tracker:** Real-time throughput charting and Scope 3 Net Zero 2050 tracking.
 - **🚢 Ship Delay & Logistics Hub:** Allows operators to log vessel delays and directly trigger live SMTP email communications with grounded truck drivers.
 - **Premium UI/UX Design Engine:** Custom glassmorphism interfaces, smooth sidebar transitions, interactive hover components, and dynamic glowing text overlays tailored to give a responsive, futuristic terminal feel.
@@ -198,7 +197,7 @@ Truck → Gate Cameras (4x) → NVIDIA Jetson Orin (Edge Node)
 
 ### Page 6 — Ship Delay Manager
 - **Actionable Logistics Control**: Allows terminal operators to explicitly assign hold-up states to flagged vessels.
-- **Automated Alerts Delivery (Live Email)**: Fully integrated Python `smtplib` dispatch engine that dynamically pulls from the `.env` configuration file to blast real-time delay warnings to physical inbox domains directly from the Streamlit UI.
+- **Congestion Reduction via Automated Alerts**: Our aim is to reduce truck idle congestion timings by informing drivers the exact time to arrive. Thus, we inform them automatically by email using a fully integrated Python `smtplib` dispatch engine that dynamically pulls from the `.env` configuration file to blast real-time delay warnings to physical inbox domains directly from the Streamlit UI.
 
 ---
 
@@ -442,7 +441,6 @@ The rich Gemini Vision severity labels are simplified for database storage and d
 | **Ship Delay DB Storage** | Isolated `ship_delays` Table strictly segregated from container audits. |
 | **Median Delay** | Custom python implementation evaluating standard middle-value aggregation (`statistics.median([logs])`). Superior for smoothing massive traffic extremes versus pure Average. |
 | **P95 Worst-case Delay** | `math.ceil(0.95 * len(sorted_delays)) - 1`. Extracts the 95th percentile, isolating the most severe 5% bottlenecks to satisfy top-level DP World fleet managers. |
-| **% Delayed Ships** | `(delayed_count / total_ships_logged) * 100`. Demonstrating the pure percentage of impacted ships interacting with the system. |
 
 ---
 

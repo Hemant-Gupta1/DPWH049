@@ -272,15 +272,6 @@ with st.sidebar:
         help="VisionGate AI is designed for multi-geography deployment across all DP World terminals.",
     )
 
-    # --- Language Selector (Localization) ---
-    st.markdown("### 🗣️ Language / اللغة / भाषा")
-    language = st.radio(
-        "Interface Language",
-        options=["🇬🇧 English", "🇦🇪 Arabic (عربي)", "🇮🇳 Hindi (हिन्दी)"],
-        index=0,
-        help="Simulates multi-locale UI — critical for global terminal operators.",
-    )
-
     st.markdown("---")
 
     # --- Navigation ---
@@ -569,10 +560,7 @@ _stats = TERMINAL_STATS.get(terminal, {"containers_today": "N/A", "gate_time": "
 
 def page_dashboard():
     st.markdown("# 🌐 VisionGate AI | Powered by DP World CARGOES")
-    st.markdown(
-        f"**Terminal:** `{terminal}` &nbsp;|&nbsp; **Live Feed** 🟢 &nbsp;|&nbsp; "
-        f"**Containers processed today:** `{_stats['containers_today']}`"
-    )
+    st.markdown(f"**Terminal:** `{terminal}` &nbsp;|&nbsp; **Live Feed** 🟢")
     st.markdown("---")
 
     # Fetch DB Stats for all dashboard KPIs
@@ -658,11 +646,10 @@ def page_dashboard():
     # ── Ship Delay Metrics ──
     delay_stats = db_utils.get_ship_delay_stats(terminal)
     st.markdown("## 🚢 Ship Delay & Logistics Hub")
-    sd_col1, sd_col2, sd_col3, sd_col4 = st.columns(4)
+    sd_col1, sd_col2, sd_col3 = st.columns(3)
     sd_col1.metric("Average Delay", f"{delay_stats['avg']} mins", border=True)
     sd_col2.metric("Median Delay", f"{delay_stats['median']} mins", border=True)
     sd_col3.metric("P95 Delay", f"{delay_stats['p95']} mins", help="95th percentile worst-case delay", border=True)
-    sd_col4.metric("% Delayed Ships", f"{delay_stats['percent_delayed']}%", help=f"Out of {delay_stats['total']} total ships logged.", border=True)
 
     st.markdown("---")
 
@@ -1729,7 +1716,7 @@ def send_email_alert(recipient_email: str, ship_name: str, delay_minutes: int, t
 
 def page_ship_delay_manager():
     st.markdown("# 🚢 Ship Delay Manager")
-    st.markdown("Log inbound ship delays and trigger real-time Email notifications directly to awaiting trucks.")
+    st.markdown("Our aim is to reduce truck idle congestion timings by informing drivers the exact time to arrive. Log inbound ship delays and trigger real-time Email notifications directly to awaiting trucks.")
     st.markdown("---")
 
     col1, col2 = st.columns([1, 1.5])
@@ -1803,7 +1790,6 @@ def build_delay_audit_pdf_bytes(terminal: str) -> bytes:
     pdf.cell(0, 6, f"- Average Delay: {stats['avg']} mins", ln=1)
     pdf.cell(0, 6, f"- Median Delay: {stats['median']} mins", ln=1)
     pdf.cell(0, 6, f"- P95 Worst-case: {stats['p95']} mins", ln=1)
-    pdf.cell(0, 6, f"- % of Ships Delayed: {stats['percent_delayed']}%", ln=1)
     pdf.ln(5)
 
     logs = db_utils.fetch_delay_logs(terminal)
@@ -1854,70 +1840,45 @@ def page_compliance_reports():
 
     st.markdown("---")
 
-    col_r1, col_r2 = st.columns(2)
+    st.markdown("### 📄 Gate Audit Report")
+    st.markdown(
+        "**What it contains:**\n"
+        "- Full inspection log for last 8 hours\n"
+        "- ISO code validation results\n"
+        "- Damage detection evidence with AI confidence scores\n"
+        "- Automated routing decisions + manual overrides\n"
+        "- Digital signature & blockchain anchor hash\n"
+        "- Regulatory compliance summary (ISO 6346, SOLAS, IMO FAL)\n"
+    )
 
-    with col_r1:
-        st.markdown("### 📄 Gate Audit Report")
-        st.markdown(
-            "**What it contains:**\n"
-            "- Full inspection log for last 8 hours\n"
-            "- ISO code validation results\n"
-            "- Damage detection evidence with AI confidence scores\n"
-            "- Automated routing decisions + manual overrides\n"
-            "- Digital signature & blockchain anchor hash\n"
-            "- Regulatory compliance summary (ISO 6346, SOLAS, IMO FAL)\n"
-        )
+    report_bytes = build_audit_pdf_bytes(terminal)
+    st.download_button(
+        label="📥 Generate & Download Gate Audit Report",
+        data=report_bytes,
+        file_name=f"VisionGate_Audit_{terminal[:3].upper()}_{datetime.datetime.now(IST).strftime('%Y%m%d_%H%M')}.pdf",
+        mime="application/pdf",
+        help="Cryptographically signed PDF audit report.",
+        use_container_width=True
+    )
 
-        report_bytes = build_audit_pdf_bytes(terminal)
-        st.download_button(
-            label="📥 Generate & Download Gate Audit Report",
-            data=report_bytes,
-            file_name=f"VisionGate_Audit_{terminal[:3].upper()}_{datetime.datetime.now(IST).strftime('%Y%m%d_%H%M')}.pdf",
-            mime="application/pdf",
-            help="Cryptographically signed PDF audit report.",
-            use_container_width=True
-        )
+    st.markdown(" ")
 
-        st.markdown(" ")
-
-        report2_bytes = build_delay_audit_pdf_bytes(terminal)
-        st.download_button(
-            label="📥 Download Ship Delay Analysis (Report 2)",
-            data=report2_bytes,
-            file_name=f"DP_World_Delay_Audit_{datetime.datetime.now(IST).strftime('%Y%m%d')}.pdf",
-            mime="application/pdf",
-            use_container_width=True
-        )
+    report2_bytes = build_delay_audit_pdf_bytes(terminal)
+    st.download_button(
+        label="📥 Download Ship Delay Analysis (Report 2)",
+        data=report2_bytes,
+        file_name=f"DP_World_Delay_Audit_{datetime.datetime.now(IST).strftime('%Y%m%d')}.pdf",
+        mime="application/pdf",
+        use_container_width=True
+    )
 
 
-        st.markdown(
-            '<div class="custom-success" style="margin-top:10px;">'
-            '✅ Reports are <b>tamper-evident</b> — any modification invalidates the digital signature. '
-            'Admissible as legal evidence under UNCITRAL e-commerce framework.</div>',
-            unsafe_allow_html=True,
-        )
-
-    with col_r2:
-        st.markdown("### 📊 Compliance Metrics (This Month)")
-        st.markdown("""
-        | Report Type | Generated | Auto-Delivered | Disputes Resolved |
-        |---|---|---|---|
-        | Gate Audit | 847 | ✅ Yes | 3 |
-        | Hazmat Incident | 12 | ✅ Yes | 1 |
-        | ESG Monthly Digest | 4 | ✅ Yes | — |
-        | ISO Validation Log | 847 | ✅ Yes | 2 |
-        | Container Damage | 34 | ✅ Yes | 8 |
-        | **Total** | **1,744** | **100%** | **14** |
-        """)
-
-        st.markdown(
-            '<div class="custom-warning">'
-            '⚖️ <b>Without VisionGate:</b> 14 disputes would have taken weeks to resolve '
-            'with paper-based evidence, costing an estimated <b>$280,000–$420,000</b> in legal fees '
-            'and demurrage charges. VisionGate resolved all 14 in <b>&lt;24 hours</b> using '
-            'AI-generated immutable evidence.</div>',
-            unsafe_allow_html=True,
-        )
+    st.markdown(
+        '<div class="custom-success" style="margin-top:10px;">'
+        '✅ Reports are <b>tamper-evident</b> — any modification invalidates the digital signature. '
+        'Admissible as legal evidence under UNCITRAL e-commerce framework.</div>',
+        unsafe_allow_html=True,
+    )
 
     st.markdown("---")
 
