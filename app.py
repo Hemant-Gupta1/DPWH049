@@ -269,7 +269,7 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
     except Exception as e:
         return f"[Error extracting PDF text: {str(e)}]"
 
-def analyze_container_gemini_dual(img_bytes_1: bytes, img_bytes_2: bytes) -> dict:
+def analyze_container_gemini_dual(img_bytes_1: bytes, img_bytes_2: bytes, weather_context: str = "Clear") -> dict:
     """
     Sends TWO container view images to Gemini Vision in a single multi-image
     API call for a unified structural inspection of one container.
@@ -290,11 +290,14 @@ def analyze_container_gemini_dual(img_bytes_1: bytes, img_bytes_2: bytes) -> dic
             "You are receiving TWO images of the SAME shipping container taken from different angles:\n"
             "- Image 1 (first image): Left / Front panel view\n"
             "- Image 2 (second image): Right / Rear panel view\n\n"
+            f"Also consider the current port weather: {weather_context}. Evaluate if the detected damage creates a specific vulnerability to this weather (e.g., if there is a hole/rust crack and heavy rain is forecasted, warn about 'Water Ingress Cargo Loss').\n\n"
             "Analyze BOTH images together as a SINGLE container inspection and return ONLY a JSON object:\n\n"
             "{\n"
             '  \"iso_code\": \"container code e.g. MSCU 1234567 or null (check both views)\",\n'
             '  \"iso_valid\": true,\n'
             '  \"container_type\": \"20ft Dry Standard / 40ft HC / Reefer / Tank\",\n'
+            '  \"weather_vulnerability\": \"e.g., High Risk of Water Ingress due to roof rust during Monsoon or null\",\n'
+            '  \"weather_routing_action\": \"e.g., Store indoors at CFS warehouse; Do not stack in open yard or null\",\n'
             '  \"damage_detections\": [\n'
             "    {\n"
             '      \"view\": 1,\n'
@@ -341,7 +344,7 @@ def analyze_container_gemini_dual(img_bytes_1: bytes, img_bytes_2: bytes) -> dic
         return {"_gemini_success": False, "error": str(exc)}
 
 
-def analyze_container(img_bytes_1: bytes, img_bytes_2: bytes) -> dict:
+def analyze_container(img_bytes_1: bytes, img_bytes_2: bytes, weather_context: str = "Clear") -> dict:
     """
     Main dual-view inference logic. Accepts TWO images of the same container
     (left/front + right/rear views) and returns a single unified analysis.
@@ -363,7 +366,7 @@ def analyze_container(img_bytes_1: bytes, img_bytes_2: bytes) -> dict:
     # we bypass the local edge-inference to avoid local dependency crashes
     # (e.g. ultralytics/paddleocr missing on judges' presentation machine)
     # and utilize Gemini Multimodal API for guaranteed accurate results.
-    return analyze_container_gemini_dual(img_bytes_1, img_bytes_2)
+    return analyze_container_gemini_dual(img_bytes_1, img_bytes_2, weather_context)
 
 
 def annotate_with_ai_boxes(image: Image.Image, detections: list) -> Image.Image:
@@ -475,6 +478,15 @@ TERMINAL_STATS = {
     "DP World London Gateway":              {"containers_today": "1,053", "gate_time": "18 sec",  "co2": "19.4", "idling": "512",   "hazmat": "4"},
     "DP World Port Qasim (Karachi)":        {"containers_today": "1,628", "gate_time": "15 sec",  "co2": "28.9", "idling": "743",   "hazmat": "6"},
     "DP World Caucedo (Dominican Rep.)":    {"containers_today": "847",   "gate_time": "19 sec",  "co2": "14.1", "idling": "381",   "hazmat": "3"},
+}
+
+# ── SIMULATED TERMINAL WEATHER ──
+TERMINAL_WEATHER_CONDITIONS = {
+    "DP World Jebel Ali (Dubai)": "Extreme Heat Warning (42°C) - High Reefer Power Draw",
+    "DP World Nhava Sheva (Mumbai)": "Monsoon Alert - Heavy Rain Forecasted (40mm/hr)",
+    "DP World London Gateway": "Gale Force Winds Forecasted (45 knots)",
+    "DP World Port Qasim (Karachi)": "Dust Storm Alert - Low Visibility (500m)",
+    "DP World Caucedo (Dominican Rep.)": "Tropical Storm Warning - High Rainfall Probability",
 }
 
 # Fallback in case a new terminal is added without a stats entry
@@ -682,7 +694,10 @@ def page_gate_inspector():
         'The AI analyses both images together and produces a <b>single unified report</b>.</div>',
         unsafe_allow_html=True,
     )
-    st.markdown("")
+    st.markdown("---")
+
+    current_weather = TERMINAL_WEATHER_CONDITIONS.get(terminal, "Clear")
+    st.info(f"🌤️ **Live Terminal Weather:** {current_weather}")
 
     up_col1, up_col2 = st.columns(2)
     with up_col1:
@@ -707,8 +722,9 @@ def page_gate_inspector():
         if cache_key not in st.session_state:
             img_bytes_1 = uploaded_view1.read()
             img_bytes_2 = uploaded_view2.read()
+            current_weather = TERMINAL_WEATHER_CONDITIONS.get(terminal, "Clear")
             with st.spinner("⚙️  Running VisionGate Dual-View Edge AI inference on both views..."):
-                result = analyze_container(img_bytes_1, img_bytes_2)
+                result = analyze_container(img_bytes_1, img_bytes_2, weather_context=current_weather)
             st.session_state[cache_key] = (img_bytes_1, img_bytes_2, result)
 
             # --- Insert single DB record (1 container, not 2) ---
@@ -834,6 +850,16 @@ def page_gate_inspector():
                     st.markdown('<span class="badge badge-yellow">⚠ ISO code not confirmed</span>',
                                 unsafe_allow_html=True)
                 st.markdown("")
+
+                # Weather Vulnerability
+                wv = result.get("weather_vulnerability")
+                wa = result.get("weather_routing_action")
+                if wv and str(wv).lower() != "null":
+                    st.markdown("**⛈️ Weather Contextual Alert**")
+                    st.error(f"**Vulnerability:** {wv}")
+                    if wa and str(wa).lower() != "null":
+                        st.warning(f"**Action Required:** {wa}")
+                    st.markdown("")
 
                 # Damage detections (unified from both views)
                 st.markdown("**🔩 Structural Integrity — Dual-View AI Assessment**")
@@ -1420,6 +1446,7 @@ def get_copilot_response(user_input: str, terminal: str) -> str:
             f"Always frame your advice using DP World safety protocols. If asked about efficiency, mention how reducing gate bottlenecks supports the 'Make Trade Flow' vision. "
             f"You are deployed at {terminal}. Be concise, professional, and accurate.\n\n"
             f"=== LIVE TERMINAL DATABASE ===\n"
+            f"Current Terminal Weather: {TERMINAL_WEATHER_CONDITIONS.get(terminal, 'Clear')}\n\n"
             f"{db_context}"
             f"{pdf_context_section}"
         )
@@ -1555,7 +1582,7 @@ def page_yard_copilot():
     suggestions = [
         "🔴 Show me damaged containers",
         "🚛 What's the current gate queue?",
-        "☣️ Any hazmat alerts today?",
+        "🌪️ Any containers at risk from the upcoming storm?",
         "🚢 Vessel loading status?",
         "🌿 Show ESG metrics",
         "📋 Generate a report",

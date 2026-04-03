@@ -58,6 +58,7 @@ Truck Arrives → Dual-Camera Capture (Left + Right Views) → Edge AI / Gemini 
 - **Multi-Language Interface Support:** Extensible localization (English, Arabic, Hindi) bridging global operators.
 - **Our World, Our Future - Impact Tracker:** Real-time throughput charting and Scope 3 Net Zero 2050 tracking.
 - **Dual-View Container Inspection:** Two side-angle images (left/front + right/rear) analysed together in a single unified AI pass for comprehensive 360° damage detection and ISO code parsing.
+- **⛈️ Weather-Contextual Vulnerability Assessment:** AI cross-references container damage against live terminal weather forecasts to prevent cargo loss (e.g., predicting water ingress due to a rust hole during monsoon warnings).
 - **🌡️ Thermal / Infrared Inspection:** Dedicated thermal imaging page for detecting hidden heat anomalies — reefer failures, insulation breaches, overheating cargo, and hazmat heat signatures — with completely separate metrics from structural inspection.
 - **CARGOES Copilot AI Chat:** Contextual querying of live TOS terminal data and port status.
 - **Downloadable Reports:** "DP World Official Gate Audit" logs for strict compliance processing.
@@ -168,7 +169,8 @@ Truck → Gate Cameras (4x) → NVIDIA Jetson Orin (Edge Node)
 - **BoxBay Smart Routing**: Automatically routes CLEAN containers to DP World BoxBay Automated Rack Loading, or DAMAGED to JAFZA Maintenance Depot.
 - **Dual Annotated Images**: Both views displayed with independent, view-specific bounding boxes. Detections from each view are correctly drawn on the corresponding image.
 - **PIL bounding boxes**: Dynamic severity-coded annotation overlays (red=critical/severe, amber=moderate, blue=minor) driven by Gemini Vision's spatial reasoning.
-- **Unified Inspection Result Card**: Single result card covering both views — ISO 6346 validation, structural status, auto-routing decision, with each damage tagged by its source view.
+- **Weather-Aware Analysis**: Injects simulated terminal weather alerts directly into the AI pipeline, generating contextual vulnerabilities if structural damage and weather intersect.
+- **Unified Inspection Result Card**: Single result card covering both views — ISO 6346 validation, structural status, auto-routing decision, and any specific weather-related warnings.
 
 ### Page 5 — Thermal Inspector (🌡️ Infrared AI)
 - **Single Image Upload**: Upload one thermal or infrared image per inspection. No dual-view required.
@@ -183,7 +185,7 @@ Truck → Gate Cameras (4x) → NVIDIA Jetson Orin (Edge Node)
 - **Attach Operational PDF (RAG)**: Users can upload PDF documents (like shipping manifests or hazmat regulations). The system instantly extracts the text and injects it into the AI's context window, allowing dynamic query responses grounded in the uploaded document.
 - **DP World Domain Persona**: AI is primed as the "DP World CARGOES AI Copilot", strictly adhering to safety protocols and the "Make Trade Flow" vision.
 - **Real Gemini LLM Chat**: CARGOES Copilot responds to contextual queries using `gemini-2.5-flash`.
-- **System Prompt RAG (Database)**: The LLM is additionally primed dynamically with full context from the live Terminal SQLite database.
+- **System Prompt RAG (Database + Weather)**: The LLM is additionally primed dynamically with full context from the live Terminal SQLite database and the current simulated terminal weather state.
 - **Streamlit native chat** integrated (`st.chat_message` / `st.chat_input`).
 
 ### Page 4 — Compliance Reports
@@ -411,6 +413,16 @@ The rich Gemini Vision severity labels are simplified for database storage and d
 | **Example** | `MSCU 1234567` |
 | **Validation** | Gemini Vision returns `iso_valid: true/false` based on conformance to ISO 6346 pattern |
 | **Failed OCR Handling** | If `iso_valid = false`, the code is stored as `FAILED_OCR` in the database |
+
+#### 17. Weather-Contextual Vulnerability
+
+| Property | Value |
+|---|---|
+| **Simulated Weather Source** | Dictionary mapping terminals to extreme weather states |
+| **Example Mappings** | Jebel Ali → Extreme Heat (42°C), Nhava Sheva → Monsoon Rain (40mm), London → Gale Force Winds (45 knots) |
+| **AI Integration** | Weather injected into Gemini system prompt alongside container images. |
+| **Output JSON Keys** | `weather_vulnerability`, `weather_routing_action` |
+| **Action** | If Gemini detects damage overlapping with weather risks (e.g., hole + rain = water ingress), an explicit warning is displayed on the UI. |
 
 ---
 
