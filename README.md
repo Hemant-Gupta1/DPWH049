@@ -41,7 +41,7 @@
 **VisionGate AI** is a production-ready prototype of an AI-driven gate triage system built for DP World port terminals. It transforms the bottleneck of manual container inspection — which takes 3–5 minutes per truck — into a **15-second fully automated pipeline**. Crucially, the solution can be **seamlessly integrated into DP World's existing systems (like CARGOES TOS)** using existing CCTV infrastructure with zero new physical sensors required.
 
 ```text
-Truck Arrives → Existing CCTV Capture → Edge AI / Gemini Vision → ISO OCR → Auto-Routing → TOS Sync
+Truck Arrives → Dual-Camera Capture (Left + Right Views) → Edge AI / Gemini Vision → ISO OCR → Auto-Routing → TOS Sync
 ```
 
 ![Prototype Snippets & Video Demo](images/1.png)
@@ -57,7 +57,7 @@ Truck Arrives → Existing CCTV Capture → Edge AI / Gemini Vision → ISO OCR 
 - **Switching Between DP World Global Terminals:** Instantly toggle terminal operations context.
 - **Multi-Language Interface Support:** Extensible localization (English, Arabic, Hindi) bridging global operators.
 - **Our World, Our Future - Impact Tracker:** Real-time throughput charting and Scope 3 Net Zero 2050 tracking.
-- **Container Image Analysis:** Dynamic AI-annotated container damage detection and ISO code parsing.
+- **Dual-View Container Inspection:** Two side-angle images (left/front + right/rear) analysed together in a single unified AI pass for comprehensive 360° damage detection and ISO code parsing.
 - **CARGOES Copilot AI Chat:** Contextual querying of live TOS terminal data and port status.
 - **Downloadable Reports:** "DP World Official Gate Audit" logs for strict compliance processing.
 
@@ -65,7 +65,7 @@ Truck Arrives → Existing CCTV Capture → Edge AI / Gemini Vision → ISO OCR 
 
 | Problem | Traditional Approach | VisionGate AI Solution |
 |---|---|---|
-| Container damage detection | Manual visual inspection (5 min) | Edge AI / Gemini Vision (15 sec) |
+| Container damage detection | Manual visual inspection (5 min) | Dual-view Edge AI / Gemini Vision (15 sec) |
 | ISO code reading | Manual OCR / human reading | Automated OCR (99.7% accuracy) |
 | Damage routing decisions | Human supervisor | Automated gate barrier + yard routing |
 | Audit trail | Paper log books (3–5% error rate) | Immutable AI-generated reports |
@@ -155,13 +155,16 @@ Truck → Gate Cameras (4x) → NVIDIA Jetson Orin (Edge Node)
 - **Dynamic Database Metrics**: Real-time DB lookup for total containers processed, High-Severity stops, and dynamically calculated efficiency metrics.
 - **Hourly throughput chart**: 24-hour bar chart with pandas + Streamlit charting, using SQLite `strftime` grouping.
 
-### Page 2 — Gate Inspector (Vision AI)
-- **Database Persistence**: Fully persists analysis (iso_code, damage_status, severity, routing) to SQLite.
+### Page 2 — Gate Inspector (Dual-View Vision AI)
+- **Dual-View Upload (Compulsory)**: Two side-by-side file uploaders — View 1 (Left/Front Panel) and View 2 (Right/Rear Panel). Both images are required; the system will not proceed until both are uploaded. This simulates the real dual-camera gate array.
+- **Unified Multi-Image AI Analysis**: Both images are sent to Gemini Vision in a **single API call** with a multi-image prompt. The AI analyses them as two views of the **same container** and returns one unified JSON result. Each `damage_detection` is tagged with `"view": 1` or `"view": 2` to indicate which image it belongs to.
+- **Single DB Record**: Despite uploading 2 images, only **1 record** is inserted into `container_logs`. Dashboard, Copilot, and Compliance all treat the dual-view inspection as a single container.
+- **Database Persistence**: Fully persists unified analysis (iso_code, damage_status, severity, routing) to SQLite.
 - **CARGOES Live Sync**: Displays dynamic "🟢 Live Sync: DP World CARGOES TOS" verification.
 - **BoxBay Smart Routing**: Automatically routes CLEAN containers to DP World BoxBay Automated Rack Loading, or DAMAGED to JAFZA Maintenance Depot.
-- **Image uploader**: JPG/PNG container photo upload
+- **Dual Annotated Images**: Both views displayed with independent, view-specific bounding boxes. Detections from each view are correctly drawn on the corresponding image.
 - **PIL bounding boxes**: Dynamic severity-coded annotation overlays (red=critical/severe, amber=moderate, blue=minor) driven by Gemini Vision's spatial reasoning.
-- **Inspection Result Card**: ISO 6346 validation, structural status, auto-routing decision.
+- **Unified Inspection Result Card**: Single result card covering both views — ISO 6346 validation, structural status, auto-routing decision, with each damage tagged by its source view.
 
 ### Page 3 — CARGOES Copilot (AI Chat) & Document RAG
 - **Attach Operational PDF (RAG)**: Users can upload PDF documents (like shipping manifests or hazmat regulations). The system instantly extracts the text and injects it into the AI's context window, allowing dynamic query responses grounded in the uploaded document.
@@ -331,14 +334,15 @@ If idling_hours_saved = 8.33 hours:
 
 ### 🔍 Page 2 — Gate Inspector Metrics & Detection Logic
 
-#### 12. Gemini Vision AI Inference
+#### 12. Gemini Vision AI Inference (Dual-View)
 
 | Property | Value |
 |---|---|
 | **Model** | `gemini-2.5-flash` (Google DeepMind) |
-| **Input** | Container image (JPG/PNG) + structured prompt |
-| **Output** | Structured JSON: `iso_code`, `damage_detections[]`, `overall_status`, `routing_action`, `summary` |
-| **Source** | `app.py → analyze_container_gemini()` |
+| **Input** | **2 container images** (left/front + right/rear views) sent in a single multi-image API call |
+| **Output** | Structured JSON: `iso_code`, `damage_detections[]` (each tagged with `view: 1` or `view: 2`), `overall_status`, `routing_action`, `summary` |
+| **Source** | `app.py → analyze_container_gemini_dual()` |
+| **Key Behaviour** | The AI inspects both views as the **same container**. ISO code is extracted from whichever view shows it more clearly. `overall_status` and `routing_action` are unified decisions — if either view shows critical damage, the overall status reflects that. |
 
 #### 13. Bounding Box Annotation
 
@@ -488,14 +492,18 @@ The following **mock values** are used as contextual reference data (not derived
 ### 🔗 Complete Metric Dependency Chain
 
 ```
-Container Image Upload
-  └── Gemini Vision AI Inference
-       ├── iso_code → DB: iso_code
-       ├── damage_detections[] → map_severity() → DB: severity (Low/Medium/High)
+Dual-View Container Image Upload (2 images = 1 container)
+  ├── View 1 (Left / Front Panel)
+  ├── View 2 (Right / Rear Panel)
+  │
+  └── Gemini Vision AI Inference (single multi-image API call)
+       ├── iso_code → DB: iso_code (best view used)
+       ├── damage_detections[] (each tagged view:1 or view:2)
+       │    └── map_severity() → DB: severity (Low/Medium/High)
        ├── overall_status → DB: damage_status (CLEAR/MINOR_DAMAGE/WARNING/CRITICAL)
        └── routing_action → BoxBay Logic → DB: recommended_action
             │
-            └── SQLite INSERT (container_logs)
+            └── SQLite INSERT (1 record per container, NOT per image)
                  │
                  ├── total_processed = COUNT(*)
                  ├── cleared = COUNT(*) WHERE damage_status = 'CLEAR'
@@ -570,7 +578,7 @@ If the technical judges ask for specifics on how we scale this architecture acro
 - **The Model:** YOLOv10 or YOLOv8 (You Only Look Once).
 - **Why?** YOLO is extremely lightweight. It can process 30-60 frames per second locally on a standard NVIDIA GPU at the physical gate, operating natively offline.
 - **How it works:** We fine-tune YOLO on a heavily curated dataset (e.g., Roboflow) to draw tight "Bounding Boxes" around specific structural classes: Damage (`Rust`, `Dent`, `Tear`) and `Text_Region`.
-- **Panel Detection:** We don't rely on AI to determine the container's physical side. We hard-map the fixed camera angles (e.g., Camera 1 = Left side, Camera 2 = Right side). If YOLO detects rust on Camera 1's feed, standard Python logic tags the payload as "Left Panel Damage."
+- **Panel Detection:** We don't rely on AI to determine the container's physical side. We hard-map the fixed camera angles (Camera 1 = Left/Front view, Camera 2 = Right/Rear view). In the hackathon prototype, this maps directly to our dual-view upload system: View 1 and View 2. If YOLO detects rust on Camera 1's feed, standard Python logic tags the payload as "Left Panel Damage."
 
 ### Step 2: The OCR Layer (Runs on the Edge)
 - **The Model:** PaddleOCR (by Baidu).
@@ -745,17 +753,21 @@ Use the **left sidebar** to:
 
 ---
 
-### Page 2: Gate Inspector (Vision AI)
+### Page 2: Gate Inspector (Dual-View Vision AI)
 
 1. Click **"Gate Inspector (Vision AI)"** in the sidebar
-2. Click **"Browse files"** and upload any JPG/PNG of a shipping container
-   - 💡 *Use any container image from Google Images*
-3. Wait **2 seconds** for the AI inference spinner
-4. View the **annotated image** with bounding boxes:
-   - 🔴 Red box = Severe Rust damage zone
-   - 🟢 Green box = ISO code plate
-5. Read the **Inspection Result Card** on the right
-6. Expand **"Full Inspection Metadata"** to see the raw AI JSON output
+2. Upload **View 1** (Left / Front Panel) — any JPG/PNG of a shipping container
+3. Upload **View 2** (Right / Rear Panel) — a second image of the **same container** from a different angle
+   - ⚠️ *Both images are required — analysis will not proceed with only one*
+   - 💡 *Use any 2 container images from Google Images to see the AI in action*
+4. Wait for the **Dual-View Edge AI inference** spinner to complete
+5. View **both annotated images** with severity-coded bounding boxes:
+   - 🔴 Red/Orange box = Critical/Severe damage
+   - 🟡 Amber box = Moderate damage
+   - 🔵 Blue box = Minor damage
+   - Each detection is tagged with its source view (View 1 or View 2)
+6. Read the **Unified Inspection Result Card** on the right — single decision covering both views
+7. Expand **"Full Edge AI Inspection Report"** to see the raw AI JSON output (includes `inspection_mode: dual-view`)
 
 ---
 
@@ -780,9 +792,9 @@ Use the **left sidebar** to:
 
 1. Click **"Compliance Reports"** in the sidebar
 2. Read the **business case** explaining the 3–5% error elimination
-3. Click **"Generate & Download Gate Audit Report"** — saves a `.txt` report to your Downloads
+3. Click **"Generate & Download Gate Audit Report"** — downloads a professional PDF report
 4. View the **compliance metrics table**
-5. Expand **"Live Audit Log"** to see last 8 inspection entries
+5. Expand **"Live Audit Log"** to see last 20 inspection entries (each row = 1 container, regardless of how many images were used)
 
 ---
 

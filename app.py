@@ -268,24 +268,35 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
     except Exception as e:
         return f"[Error extracting PDF text: {str(e)}]"
 
-def analyze_container_gemini(img_bytes: bytes) -> dict:
+def analyze_container_gemini_dual(img_bytes_1: bytes, img_bytes_2: bytes) -> dict:
     """
-    Sends the container image to Gemini Vision for real AI analysis.
-    Returns structured JSON: ISO code, damage detections with normalized
-    bounding boxes [x1,y1,x2,y2], severity, routing action, and summary.
+    Sends TWO container view images to Gemini Vision in a single multi-image
+    API call for a unified structural inspection of one container.
+
+    Image 1 = Left / Front panel view.
+    Image 2 = Right / Rear panel view.
+
+    Returns structured JSON: ISO code, damage detections (each tagged with
+    'view': 1 or 2) with normalized bounding boxes, severity, routing action,
+    and a unified summary covering both views.
     """
     try:
-        img_pil = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        img_pil_1 = Image.open(io.BytesIO(img_bytes_1)).convert("RGB")
+        img_pil_2 = Image.open(io.BytesIO(img_bytes_2)).convert("RGB")
         model = _get_gemini_model()
         prompt = (
             "You are an expert AI inspector for a port terminal gate system.\n"
-            "Analyze this shipping container image and return ONLY a JSON object:\n\n"
+            "You are receiving TWO images of the SAME shipping container taken from different angles:\n"
+            "- Image 1 (first image): Left / Front panel view\n"
+            "- Image 2 (second image): Right / Rear panel view\n\n"
+            "Analyze BOTH images together as a SINGLE container inspection and return ONLY a JSON object:\n\n"
             "{\n"
-            '  \"iso_code\": \"container code e.g. MSCU 1234567 or null\",\n'
+            '  \"iso_code\": \"container code e.g. MSCU 1234567 or null (check both views)\",\n'
             '  \"iso_valid\": true,\n'
             '  \"container_type\": \"20ft Dry Standard / 40ft HC / Reefer / Tank\",\n'
             '  \"damage_detections\": [\n'
             "    {\n"
+            '      \"view\": 1,\n'
             '      \"class\": \"rust/dent/scratch/hole/paint_damage/door_issue\",\n'
             '      \"severity\": \"minor/moderate/severe/critical\",\n'
             '      \"panel\": \"left/right/front/rear/roof/floor\",\n'
@@ -296,18 +307,24 @@ def analyze_container_gemini(img_bytes: bytes) -> dict:
             "  ],\n"
             '  \"overall_status\": \"CLEAR/MINOR_DAMAGE/WARNING/CRITICAL\",\n'
             '  "routing_action": "VESSEL_LOAD/INSPECTION_HOLD/MAINTENANCE_YARD/QUARANTINE",\n'
-            '  "routing_reason": "one sentence reason",\n'
+            '  "routing_reason": "one sentence reason covering both views",\n'
             '  "recommended_action": "use this exact text: If CLEAR/NO DAMAGE: Clear for DP World BoxBay Automated Rack Loading. If DAMAGED: Halt. Reroute to JAFZA (Jebel Ali Free Zone) Maintenance Depot.",\n'
             '  "hazmat_suspected": false,\n'
-            '  "summary": "2-3 sentence assessment"\n'
+            '  "summary": "2-3 sentence unified assessment covering findings from BOTH views"\n'
             "}\n\n"
-            "For bbox_normalized: estimate damage location as [x1,y1,x2,y2] in 0.0-1.0 range\n"
-            "where [0,0]=top-left, [1,1]=bottom-right. x1<x2, y1<y2.\n"
-            "If no damage: return empty array [].\n"
-            "If not a container: set overall_status to NOT_CONTAINER.\n"
+            "IMPORTANT RULES:\n"
+            "- Each damage_detection MUST include a 'view' field: 1 for Image 1, 2 for Image 2.\n"
+            "- bbox_normalized coordinates are relative to the respective view's image.\n"
+            "- For bbox_normalized: estimate damage location as [x1,y1,x2,y2] in 0.0-1.0 range\n"
+            "  where [0,0]=top-left, [1,1]=bottom-right. x1<x2, y1<y2.\n"
+            "- iso_code: Look for the ISO code in BOTH images. Use whichever view shows it more clearly.\n"
+            "- overall_status and routing_action: Make a SINGLE unified decision considering BOTH views.\n"
+            "  If either view shows critical damage, the overall status should reflect that.\n"
+            "- If no damage in both views: return empty damage_detections array [].\n"
+            "- If neither image is a container: set overall_status to NOT_CONTAINER.\n"
             "Return ONLY the JSON, no markdown, no explanation."
         )
-        response = model.generate_content([prompt, img_pil])
+        response = model.generate_content([prompt, img_pil_1, img_pil_2])
         text = response.text.strip()
         # Strip markdown fences if present
         if "```" in text:
@@ -322,25 +339,30 @@ def analyze_container_gemini(img_bytes: bytes) -> dict:
     except Exception as exc:
         return {"_gemini_success": False, "error": str(exc)}
 
-def analyze_container(img_bytes: bytes) -> dict:
+
+def analyze_container(img_bytes_1: bytes, img_bytes_2: bytes) -> dict:
     """
-    Main inference logic. Wraps the production edge architecture execution 
-    while ultimately defaulting to the cloud Gemini API for the hackathon live demo 
-    to guarantee stability and accurate results during the presentation.
+    Main dual-view inference logic. Accepts TWO images of the same container
+    (left/front + right/rear views) and returns a single unified analysis.
+
+    Wraps the production edge architecture execution while ultimately defaulting
+    to the cloud Gemini API for the hackathon live demo to guarantee stability.
     """
     # --- PRODUCTION ARCHITECTURE PROOF ---
     # In a real deployed edge node (NVIDIA Jetson at the physical gate), we would run:
     # edge_processor = EdgeVisionProcessor()
-    # edge_damage_boxes = edge_processor.run_yolo_damage_detection(img_bytes)
-    # edge_iso_code = edge_processor.run_paddle_ocr(img_bytes)
+    # edge_damage_1 = edge_processor.run_yolo_damage_detection(img_bytes_1)  # Camera 1
+    # edge_damage_2 = edge_processor.run_yolo_damage_detection(img_bytes_2)  # Camera 2
+    # edge_iso_code = edge_processor.run_paddle_ocr(img_bytes_1)  # Best view for ISO
+    # merged_result = merge_edge_detections(edge_damage_1, edge_damage_2, edge_iso_code)
     # ---------------------------------------
-    
+
     # --- HACKATHON LIVE DEMO OVERRIDE ---
-    # For the purpose of this 24-hour hackathon live demo, 
-    # we bypass the local edge-inference to avoid local dependency crashes 
+    # For the purpose of this 24-hour hackathon live demo,
+    # we bypass the local edge-inference to avoid local dependency crashes
     # (e.g. ultralytics/paddleocr missing on judges' presentation machine)
     # and utilize Gemini Multimodal API for guaranteed accurate results.
-    return analyze_container_gemini(img_bytes)
+    return analyze_container_gemini_dual(img_bytes_1, img_bytes_2)
 
 
 def annotate_with_ai_boxes(image: Image.Image, detections: list) -> Image.Image:
@@ -594,7 +616,7 @@ def page_dashboard():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PAGE 2 – GATE INSPECTOR (VISION AI)
+# PAGE 2 – GATE INSPECTOR (VISION AI) — DUAL-VIEW INSPECTION
 # ─────────────────────────────────────────────────────────────────────────────
 
 def page_gate_inspector():
@@ -606,30 +628,54 @@ def page_gate_inspector():
     st.markdown("---")
 
     st.markdown(
-        '<div class="custom-info">ℹ️  Each gate lane is equipped with a <b>4-camera array</b> '
-        '(front, rear, left, right panels). Images are processed on-device in &lt;200ms by a '
-        'quantised YOLOv8 model fine-tuned on 50,000+ annotated container images. Results are '
-        'synced to the Terminal Operating System (CARGOES TOS) via REST API in real-time.</div>',
+        '<div class="custom-info">ℹ️  Each gate lane is equipped with a <b>dual-camera array</b> '
+        'capturing two side-angle views of every container (left/front + right/rear panels). '
+        'Both images are processed together in a single unified AI inference pass, producing '
+        'one consolidated inspection report. Results are synced to the Terminal Operating System '
+        '(CARGOES TOS) via REST API in real-time.</div>',
         unsafe_allow_html=True,
     )
     st.markdown("---")
 
-    uploaded_file = st.file_uploader(
-        "📸 Upload Container Image (JPG / PNG)",
-        type=["jpg", "jpeg", "png"],
-        help="Upload a photo of a shipping container. The AI will detect damage zones and read the ISO code.",
+    # ── Dual-View Uploaders ──
+    st.markdown("### 📸 Upload Two Views of the Same Container")
+    st.markdown(
+        '<div class="custom-info" style="font-size:.85rem;">'
+        'ℹ️  Upload <b>two side-angle photos</b> of the <b>same container</b> — '
+        'simulating the dual-camera gate array. Both views are required for a complete inspection. '
+        'The AI analyses both images together and produces a <b>single unified report</b>.</div>',
+        unsafe_allow_html=True,
     )
+    st.markdown("")
 
-    if uploaded_file is not None:
-        # Cache AI result per file (name+size) to avoid re-calling on every widget interaction
-        cache_key = f"vision_ai_{uploaded_file.name}_{uploaded_file.size}"
+    up_col1, up_col2 = st.columns(2)
+    with up_col1:
+        uploaded_view1 = st.file_uploader(
+            "📷 View 1 — Left / Front Panel",
+            type=["jpg", "jpeg", "png"],
+            help="Upload the left or front side photo of the container.",
+            key="view1_uploader",
+        )
+    with up_col2:
+        uploaded_view2 = st.file_uploader(
+            "📷 View 2 — Right / Rear Panel",
+            type=["jpg", "jpeg", "png"],
+            help="Upload the right or rear side photo of the same container.",
+            key="view2_uploader",
+        )
+
+    # ── Both views required guard ──
+    if uploaded_view1 is not None and uploaded_view2 is not None:
+        # Composite cache key using both files
+        cache_key = f"vision_ai_dual_{uploaded_view1.name}_{uploaded_view1.size}_{uploaded_view2.name}_{uploaded_view2.size}"
         if cache_key not in st.session_state:
-            img_bytes = uploaded_file.read()
-            with st.spinner("⚙️  Running VisionGate Edge AI inference..."):
-                result = analyze_container(img_bytes)
-            st.session_state[cache_key] = (img_bytes, result)
+            img_bytes_1 = uploaded_view1.read()
+            img_bytes_2 = uploaded_view2.read()
+            with st.spinner("⚙️  Running VisionGate Dual-View Edge AI inference on both views..."):
+                result = analyze_container(img_bytes_1, img_bytes_2)
+            st.session_state[cache_key] = (img_bytes_1, img_bytes_2, result)
 
-            # --- Insert BoxBay-specific recommended action for DB persistence ---
+            # --- Insert single DB record (1 container, not 2) ---
             boxbay_action = (
                 "Clear for DP World BoxBay Automated Rack Loading."
                 if result.get("overall_status") == "CLEAR"
@@ -639,7 +685,7 @@ def page_gate_inspector():
                 iso_val = result.get("iso_code") or "N/A"
                 if not result.get("iso_valid"):
                     iso_val = "FAILED_OCR"
-                
+
                 db_utils.insert_log(
                     iso_code=iso_val,
                     damage_status=result.get("overall_status", "CLEAR"),
@@ -648,15 +694,21 @@ def page_gate_inspector():
                     location=terminal,
                 )
         else:
-            img_bytes, result = st.session_state[cache_key]
+            img_bytes_1, img_bytes_2, result = st.session_state[cache_key]
 
         if not result.get("_gemini_success"):
             st.error(f"🔴 Vision AI Error: {result.get('error', 'Unknown error')}")
-            st.image(Image.open(io.BytesIO(img_bytes)), use_container_width=True)
+            err_col1, err_col2 = st.columns(2)
+            err_col1.image(Image.open(io.BytesIO(img_bytes_1)), caption="View 1", use_container_width=True)
+            err_col2.image(Image.open(io.BytesIO(img_bytes_2)), caption="View 2", use_container_width=True)
         else:
             overall   = result.get("overall_status", "CLEAR")
             routing   = result.get("routing_action", "INSPECTION_HOLD")
             detections = result.get("damage_detections", [])
+
+            # Split detections by view
+            view1_detections = [d for d in detections if d.get("view") == 1]
+            view2_detections = [d for d in detections if d.get("view") == 2]
 
             STATUS_STYLES = {
                 "CLEAR":         ("custom-success", "✅",  "CLEAR — No Significant Damage",        "badge-green"),
@@ -677,45 +729,58 @@ def page_gate_inspector():
             }
             r_icon, r_label, r_style = ROUTING_META.get(routing, ("🔵", routing, "custom-info"))
 
-            st.success(f"✅ **Vision AI inference complete** — real analysis on your image. Terminal: `{terminal}`")
+            st.success(f"✅ **Dual-View Vision AI inference complete** — unified analysis from both views. Terminal: `{terminal}`")
 
             col_img, col_result = st.columns([1.2, 1])
 
-            # ── Left: Annotated Image ──
+            # ── Left: Dual Annotated Images ──
             with col_img:
-                st.markdown("### 📷 AI-Annotated Inspection Frame")
-                img_pil = Image.open(io.BytesIO(img_bytes))
-                annotated = annotate_with_ai_boxes(img_pil, detections) if detections else img_pil
-                st.image(annotated, use_container_width=True,
-                         caption=f"Edge Vision Output — {len(detections)} detection(s) on your image")
+                st.markdown("### 📷 AI-Annotated Dual Inspection Frames")
+
+                # View 1
+                st.markdown("**View 1 — Left / Front Panel**")
+                img_pil_1 = Image.open(io.BytesIO(img_bytes_1))
+                annotated_1 = annotate_with_ai_boxes(img_pil_1, view1_detections) if view1_detections else img_pil_1
+                st.image(annotated_1, use_container_width=True,
+                         caption=f"View 1 — {len(view1_detections)} detection(s)")
+
+                # View 2
+                st.markdown("**View 2 — Right / Rear Panel**")
+                img_pil_2 = Image.open(io.BytesIO(img_bytes_2))
+                annotated_2 = annotate_with_ai_boxes(img_pil_2, view2_detections) if view2_detections else img_pil_2
+                st.image(annotated_2, use_container_width=True,
+                         caption=f"View 2 — {len(view2_detections)} detection(s)")
+
+                # Combined detection summary across both views
                 if detections:
                     sev_icons = {"critical": "🔴", "severe": "🟠", "moderate": "🟡", "minor": "🔵"}
                     parts = [
                         f"{sev_icons.get(d.get('severity','moderate'),'⚪')} "
-                        f"{d.get('class','damage').replace('_',' ').title()} ({d.get('severity','?')})"
+                        f"{d.get('class','damage').replace('_',' ').title()} ({d.get('severity','?')}) "
+                        f"[View {d.get('view','?')}]"
                         for d in detections
                     ]
                     st.markdown(
                         f'<div class="custom-info" style="font-size:.8rem;">'
-                        f"<b>AI Detections ({len(detections)}):</b> "
+                        f"<b>Combined AI Detections ({len(detections)} across both views):</b><br> "
                         + " &nbsp;|&nbsp; ".join(parts) + "</div>",
                         unsafe_allow_html=True,
                     )
                 else:
                     st.markdown(
                         '<div class="custom-success" style="font-size:.8rem;">'
-                        "✅ No damage detected by AI</div>",
+                        "✅ No damage detected in either view</div>",
                         unsafe_allow_html=True,
                     )
 
-            # ── Right: Inspection Result Card ──
+            # ── Right: Unified Inspection Result Card ──
             with col_result:
-                st.markdown("### 📋 Inspection Result Card")
+                st.markdown("### 📋 Unified Inspection Result Card")
                 st.markdown(
                     f'<div class="{style_cls}">'
                     f'{icon} <b>INSPECTION STATUS: {status_text}</b><br>'
                     f'<span class="badge {badge_cls}">{overall}</span>'
-                    f'<span class="badge badge-blue">VISIONGATE EDGE AI</span>'
+                    f'<span class="badge badge-blue">DUAL-VIEW AI</span>'
                     f"</div>",
                     unsafe_allow_html=True,
                 )
@@ -723,7 +788,7 @@ def page_gate_inspector():
 
                 # ISO Code
                 st.markdown("**📦 ISO Container Code (ISO 6346)**")
-                iso = result.get("iso_code") or "Not readable in image"
+                iso = result.get("iso_code") or "Not readable in either view"
                 st.code(iso, language=None)
                 if result.get("iso_valid") and result.get("iso_code"):
                     st.markdown('<span class="badge badge-green">✓ Validated — ISO 6346 Pass</span>',
@@ -733,8 +798,8 @@ def page_gate_inspector():
                                 unsafe_allow_html=True)
                 st.markdown("")
 
-                # Damage detections
-                st.markdown("**🔩 Structural Integrity — AI Assessment**")
+                # Damage detections (unified from both views)
+                st.markdown("**🔩 Structural Integrity — Dual-View AI Assessment**")
                 if detections:
                     for det in detections:
                         sev = det.get("severity", "moderate").lower()
@@ -743,10 +808,12 @@ def page_gate_inspector():
                             "moderate": "custom-warning", "minor": "custom-info",
                         }.get(sev, "custom-info")
                         badge_sev = "badge-red" if sev in ("critical", "severe") else "badge-yellow"
+                        view_label = f"View {det.get('view', '?')}"
                         st.markdown(
                             f'<div class="{sev_class}" style="margin-bottom:6px;">'
                             f"<b>{det.get('class','damage').replace('_',' ').title()}</b>"
-                            f" — {det.get('panel','?').capitalize()} panel<br>"
+                            f" — {det.get('panel','?').capitalize()} panel"
+                            f' <span class="badge badge-blue" style="font-size:.7rem;">{view_label}</span><br>'
                             f"{det.get('description','')}<br>"
                             f'<span class="badge {badge_sev}">{sev.upper()}</span> '
                             f'<span style="font-size:.8rem;color:#8b949e;">'
@@ -755,14 +822,14 @@ def page_gate_inspector():
                         )
                 else:
                     st.markdown(
-                        '<div class="custom-success">✅ <b>No structural damage detected.</b><br>'
+                        '<div class="custom-success">✅ <b>No structural damage detected in either view.</b><br>'
                         "Container appears clear for loading.</div>",
                         unsafe_allow_html=True,
                     )
 
                 # AI Summary
                 if result.get("summary"):
-                    st.markdown("**🧠 AI Assessment Summary**")
+                    st.markdown("**🧠 AI Assessment Summary (Both Views)**")
                     st.markdown(
                         f'<div class="custom-info" style="font-size:.85rem;">{result["summary"]}</div>',
                         unsafe_allow_html=True,
@@ -776,7 +843,7 @@ def page_gate_inspector():
                     unsafe_allow_html=True,
                 )
 
-                # TOS Sync (mocked — real TOS integration out of scope)
+                # TOS Sync
                 event_id = f"TOS-EVT-{datetime.datetime.now(IST).strftime('%Y%m%d-%H%M%S')}"
                 st.markdown("**🔄 Terminal Operating System Sync**")
                 st.markdown(
@@ -792,22 +859,34 @@ def page_gate_inspector():
                 with st.expander("🔬 Full Edge AI Inspection Report"):
                     display = {k: v for k, v in result.items() if not k.startswith("_")}
                     display["inspection_id"] = event_id
+                    display["inspection_mode"] = "dual-view"
                     display["terminal"] = terminal
                     display["timestamp_ist"] = datetime.datetime.now(IST).isoformat()
                     display["model"] = "VisionGate Orin Edge Cluster"
                     st.json(display)
 
+    elif uploaded_view1 is not None or uploaded_view2 is not None:
+        # Only one view uploaded — prompt for the other
+        missing = "View 2 (Right / Rear Panel)" if uploaded_view1 else "View 1 (Left / Front Panel)"
+        st.markdown(
+            f'<div class="custom-warning" style="text-align:center; padding:30px;">'
+            f'⚠️ <b>Upload {missing}</b> to begin dual-view inspection.<br>'
+            f'<span style="font-size:.85rem; color:#8b949e;">'
+            f'Both side-angle views of the same container are required for a complete AI analysis.</span></div>',
+            unsafe_allow_html=True,
+        )
     else:
-        # Placeholder when no image uploaded
+        # Placeholder when no images uploaded
         st.markdown(
             """
             <div style='text-align:center; padding:60px 40px; background:#161b22;
                         border:2px dashed #388bfd; border-radius:16px; margin-top:20px;'>
-                <h2 style='color:#58a6ff;'>📸 No Image Uploaded</h2>
-                <p style='color:#8b949e;'>Upload a shipping container photo above to begin AI inspection.<br>
-                Supported: JPG, JPEG, PNG — Max 200 MB</p>
+                <h2 style='color:#58a6ff;'>📸 No Images Uploaded</h2>
+                <p style='color:#8b949e;'>Upload <b>two side-angle photos</b> of the same container above to begin dual-view AI inspection.<br>
+                View 1: Left / Front panel &nbsp;|&nbsp; View 2: Right / Rear panel<br>
+                Supported: JPG, JPEG, PNG — Max 200 MB per image</p>
                 <p style='color:#8b949e; font-size:.85rem;'>
-                💡 <b>Tip:</b> Use any container image from Google Images to see the AI in action.</p>
+                💡 <b>Tip:</b> Use any 2 container images from Google Images to see the AI in action.</p>
             </div>
             """,
             unsafe_allow_html=True,
@@ -815,11 +894,11 @@ def page_gate_inspector():
 
         # Show sample workflow
         st.markdown("---")
-        st.markdown("### 🔄 Inspection Workflow")
+        st.markdown("### 🔄 Dual-View Inspection Workflow")
         step_cols = st.columns(5)
         steps = [
-            ("📷", "Camera Capture", "4-camera gate array triggers on truck approach"),
-            ("⚙️", "Edge Inference", "YOLOv8 runs on Jetson Orin <200ms"),
+            ("📷", "Dual Camera Capture", "2-camera gate array captures left + right views"),
+            ("⚙️", "Unified AI Inference", "Both views analysed together in one pass"),
             ("📊", "Result Scoring", "Damage + ISO extracted, confidence scored"),
             ("🚦", "Auto-Routing", "Gate barrier + yard routing issued instantly"),
             ("🔄", "TOS Sync", "CARGOES TOS updated, stakeholders notified"),
