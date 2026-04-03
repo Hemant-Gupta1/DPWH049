@@ -18,6 +18,7 @@ import os
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
 from dotenv import load_dotenv
+import PyPDF2
 
 import db_utils
 from fpdf import FPDF
@@ -254,6 +255,18 @@ def _get_gemini_model():
     # Using the standard vision model that is universally supported
     return genai.GenerativeModel("gemini-2.5-flash")
 
+def extract_text_from_pdf(pdf_bytes: bytes) -> str:
+    """Reads a PDF byte stream and returns all extracted text."""
+    try:
+        reader = PyPDF2.PdfReader(io.BytesIO(pdf_bytes))
+        text = []
+        for page in reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text.append(page_text)
+        return "\n".join(text)
+    except Exception as e:
+        return f"[Error extracting PDF text: {str(e)}]"
 
 def analyze_container_gemini(img_bytes: bytes) -> dict:
     """
@@ -928,11 +941,21 @@ def get_copilot_response(user_input: str, terminal: str) -> str:
         model = _get_gemini_model()
         db_context = db_utils.get_db_context_for_llm(location=terminal)
         
+        pdf_context_section = ""
+        if st.session_state.get("copilot_pdf_context"):
+            pdf_context_section = (
+                "\n\n=== ATTACHED DOCUMENT CONTEXT ===\n"
+                f"{st.session_state.copilot_pdf_context}\n"
+                "Instruction: Use the above attached document context to inform your answers if relevant."
+            )
+        
         system_prompt = (
             f"You are the DP World CARGOES AI Copilot. You assist Yard Planners at DP World terminals. "
             f"Always frame your advice using DP World safety protocols. If asked about efficiency, mention how reducing gate bottlenecks supports the 'Make Trade Flow' vision. "
             f"You are deployed at {terminal}. Be concise, professional, and accurate.\n\n"
+            f"=== LIVE TERMINAL DATABASE ===\n"
             f"{db_context}"
+            f"{pdf_context_section}"
         )
         
         # Build chat history for context (Gemini expects user/model roles)
@@ -999,6 +1022,25 @@ def page_yard_copilot():
         )
 
     st.markdown("---")
+    
+    # PDF Context Uploader
+    with st.expander("📎 Attach Operational Document / Manifest (PDF)"):
+        st.markdown("Upload a document (e.g., Hazmat regulations, stowage instructions) for the AI to read and reference.")
+        uploaded_pdf = st.file_uploader("Upload PDF", type=["pdf"])
+        
+        if uploaded_pdf is not None:
+            # Only process if it's a new file
+            if st.session_state.get("last_uploaded_pdf") != uploaded_pdf.name:
+                with st.spinner("Extracting document text..."):
+                    extracted_text = extract_text_from_pdf(uploaded_pdf.read())
+                    st.session_state.copilot_pdf_context = extracted_text
+                    st.session_state.last_uploaded_pdf = uploaded_pdf.name
+                
+            st.success(f"📄 **Document Attached:** `{uploaded_pdf.name}` (ready for context)")
+        else:
+            # Clear context if file is removed
+            st.session_state.copilot_pdf_context = ""
+            st.session_state.last_uploaded_pdf = None
 
     # Initialise chat history
     if "messages" not in st.session_state:

@@ -162,10 +162,11 @@ Truck → Gate Cameras (4x) → NVIDIA Jetson Orin (Edge Node)
 - **PIL bounding boxes**: Dynamic red (damage) and green (ISO code) annotation overlays with Gemini Vision's rich metadata.
 - **Inspection Result Card**: ISO 6346 validation, structural status, auto-routing decision.
 
-### Page 3 — CARGOES Copilot (AI Chat)
+### Page 3 — CARGOES Copilot (AI Chat) & Document RAG
+- **Attach Operational PDF (RAG)**: Users can upload PDF documents (like shipping manifests or hazmat regulations). The system instantly extracts the text and injects it into the AI's context window, allowing dynamic query responses grounded in the uploaded document.
 - **DP World Domain Persona**: AI is primed as the "DP World CARGOES AI Copilot", strictly adhering to safety protocols and the "Make Trade Flow" vision.
 - **Real Gemini LLM Chat**: CARGOES Copilot responds to contextual queries using `gemini-1.5-flash`.
-- **System Prompt RAG**: The LLM is primed dynamically with full context from the SQLite database.
+- **System Prompt RAG (Database)**: The LLM is additionally primed dynamically with full context from the live Terminal SQLite database.
 - **Streamlit native chat** integrated (`st.chat_message` / `st.chat_input`).
 
 ### Page 4 — Compliance Reports
@@ -184,6 +185,7 @@ Truck → Gate Cameras (4x) → NVIDIA Jetson Orin (Edge Node)
 | **Image Processing** | Pillow (PIL) 10+ | Dynamic bounding box annotation on container images |
 | **Data** | Pandas 2.0+ | Tabular data fetched from local DB |
 | **AI / LLM** | Gemini 1.5/2.5 Flash API  | GenAI for OCR, structural damage, and conversational Yard Copilot |
+| **Document Processing** | PyPDF2 | Extracts text from uploaded operational PDFs for RAG context in Copilot |
 | **Reporting** | fpdf2 | Professional PDF report generation for audit compliance |
 | **Styling** | Custom CSS | Dark mode, glassmorphism, gradient cards |
 
@@ -267,6 +269,7 @@ This installs:
 - `pandas` — data manipulation
 - `python-dotenv` — secure environment variable loading
 - `fpdf2` — PDF report generation
+- `PyPDF2` — PDF text extraction for LLM Context RAG
 
 **Expected output:**
 ```
@@ -373,11 +376,12 @@ Use the **left sidebar** to:
 
 ---
 
-### Page 3: CARGOES Copilot (AI Chat)
+### Page 3: CARGOES Copilot (AI Chat) & Document Context
 
 1. Click **"Yard Copilot (AI Chat)"** in the sidebar
-2. Read the AI greeting message
-3. Type any of these queries in the chat input:
+2. *(Optional)* Expand **"📎 Attach Operational Document"** and upload a PDF document. You will see a success badge once the context is ingested into the AI's brain.
+3. Read the AI greeting message
+4. Type any of these queries in the chat input (or ask about your uploaded PDF):
    - *"Show me damaged containers"*
    - *"What's the current gate queue?"*
    - *"Any hazmat alerts today?"*
