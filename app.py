@@ -220,6 +220,7 @@ with st.sidebar:
         options=[
             "🌐 Global Dashboard (ESG)",
             "🔍 Gate Inspector (Vision AI)",
+            "🌡️ Thermal Inspector",
             "🤖 Yard Copilot (AI Chat)",
             "📋 Compliance Reports",
         ],
@@ -436,8 +437,8 @@ def build_audit_pdf_bytes(terminal: str) -> bytes:
     pdf.cell(0, 10, "2. Live Inspection Ledger (Last 50 entries)", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("helvetica", "B", 9)
     # Header row
-    widths = [45, 35, 40, 30, 60]
-    headers = ["Timestamp (UTC)", "ISO Code", "Status", "Severity", "Routing Action"]
+    widths = [40, 30, 22, 35, 25, 55]
+    headers = ["Timestamp (UTC)", "ISO Code", "Type", "Status", "Severity", "Routing Action"]
     for i, h in enumerate(headers):
         pdf.cell(widths[i], 8, h, border=1)
     pdf.ln()
@@ -445,11 +446,13 @@ def build_audit_pdf_bytes(terminal: str) -> bytes:
     # Data rows
     pdf.set_font("helvetica", "", 9)
     for row in logs[:50]:
+        itype = row.get('inspection_type', 'structural').capitalize()
         pdf.cell(widths[0], 8, str(row['timestamp']), border=1)
         pdf.cell(widths[1], 8, str(row['iso_code']), border=1)
-        pdf.cell(widths[2], 8, str(row['damage_status']), border=1)
-        pdf.cell(widths[3], 8, str(row['severity']), border=1)
-        pdf.cell(widths[4], 8, str(row['recommended_action']), border=1)
+        pdf.cell(widths[2], 8, itype, border=1)
+        pdf.cell(widths[3], 8, str(row['damage_status']), border=1)
+        pdf.cell(widths[4], 8, str(row['severity']), border=1)
+        pdf.cell(widths[5], 8, str(row['recommended_action']), border=1)
         pdf.ln()
         
     pdf.ln(10)
@@ -490,7 +493,7 @@ def page_dashboard():
     st.markdown("---")
 
     # Fetch DB Stats for all dashboard KPIs
-    db_stats = db_utils.get_summary_stats(location=terminal)
+    db_stats = db_utils.get_summary_stats(location=terminal, inspection_type='structural')
     
     st.markdown("## 🔴 Real-Time Gate Performance Metrics (Live Data)")
     st.markdown(
@@ -614,6 +617,39 @@ def page_dashboard():
     else:
         st.warning("No containers processed in the last 24 hours. Upload an image in the Gate Inspector to generate live analytics.")
 
+    # ── THERMAL MONITORING SECTION (Completely Separate from Structural) ──
+    st.markdown("---")
+    st.markdown("## 🌡️ Thermal Monitoring Metrics")
+    st.markdown(
+        '<div class="custom-info">ℹ️  Thermal metrics are <b>completely independent</b> from structural Gate Inspector metrics above. '
+        'These track infrared anomaly detection for reefer monitoring, hazmat heat signatures, and insulation failures. '
+        '<i>Data sourced live from thermal inspection records in the database.</i></div>',
+        unsafe_allow_html=True,
+    )
+
+    thermal_stats = db_utils.get_thermal_stats(location=terminal)
+    tc1, tc2, tc3, tc4 = st.columns(4)
+    tc1.metric(
+        label="🌡️ Thermal Scans",
+        value=f"{thermal_stats['total_thermal_scans']}",
+        help="Total thermal/infrared inspections performed via the Thermal Inspector page."
+    )
+    tc2.metric(
+        label="🔥 Heat Anomalies",
+        value=f"{thermal_stats['heat_anomalies']}",
+        help="Thermal scans where heat anomalies (hotspots, reefer failures, overheating cargo) were detected."
+    )
+    tc3.metric(
+        label="⚠️ Critical Thermal",
+        value=f"{thermal_stats['critical_thermal']}",
+        help="Thermal alerts classified as High severity — immediate intervention required."
+    )
+    tc4.metric(
+        label="📊 Anomaly Rate",
+        value=f"{thermal_stats['anomaly_rate']}%",
+        help="Percentage of thermal scans that detected anomalies vs normal readings."
+    )
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PAGE 2 – GATE INSPECTOR (VISION AI) — DUAL-VIEW INSPECTION
@@ -691,6 +727,7 @@ def page_gate_inspector():
                     damage_status=result.get("overall_status", "CLEAR"),
                     severity=db_utils.map_severity(result.get("damage_detections", [])),
                     recommended_action=boxbay_action,
+                    inspection_type="structural",
                     location=terminal,
                 )
         else:
@@ -907,6 +944,384 @@ def page_gate_inspector():
             col.markdown(
                 f"<div style='text-align:center;'><div style='font-size:2rem;'>{icon}</div>"
                 f"<b style='color:#58a6ff;'>{title}</b><br>"
+                f"<span style='font-size:.8rem; color:#8b949e;'>{desc}</span></div>",
+                unsafe_allow_html=True,
+            )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PAGE 5 – THERMAL INSPECTOR (INFRARED ANOMALY DETECTION)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def analyze_thermal_gemini(img_bytes: bytes) -> dict:
+    """
+    Sends a thermal/infrared container image to Gemini Vision for
+    heat anomaly analysis. Completely separate from structural inspection.
+
+    Detects: hotspots, cold spots, reefer failures, insulation breaches,
+    overheating cargo, hazmat heat signatures, temperature gradients.
+    """
+    try:
+        img_pil = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        model = _get_gemini_model()
+        prompt = (
+            "You are an expert AI thermal imaging analyst for a port terminal gate system.\n"
+            "You are analysing a THERMAL / INFRARED image of a shipping container.\n"
+            "Your job is to detect heat anomalies that indicate safety risks.\n\n"
+            "Analyse the image and return ONLY a JSON object:\n\n"
+            "{\n"
+            '  "iso_code": "container code if visible, or null",\n'
+            '  "iso_valid": true,\n'
+            '  "container_type": "20ft Dry / 40ft HC / Reefer / Tank",\n'
+            '  "thermal_detections": [\n'
+            "    {\n"
+            '      "class": "hotspot/cold_spot/insulation_breach/reefer_failure/overheating_cargo/hazmat_heat/thermal_gradient",\n'
+            '      "severity": "minor/moderate/severe/critical",\n'
+            '      "zone": "left/right/top/bottom/center/door",\n'
+            '      "estimated_temp_delta": "+15°C above ambient",\n'
+            '      "description": "brief description of the thermal anomaly",\n'
+            '      "confidence": 0.85,\n'
+            '      "bbox_normalized": [x1, y1, x2, y2]\n'
+            "    }\n"
+            "  ],\n"
+            '  "thermal_status": "NORMAL/ELEVATED/WARNING/CRITICAL",\n'
+            '  "reefer_status": "OPERATIONAL/DEGRADED/FAILED/NOT_APPLICABLE",\n'
+            '  "routing_action": "VESSEL_LOAD/INSPECTION_HOLD/MAINTENANCE_YARD/QUARANTINE",\n'
+            '  "routing_reason": "one sentence reason based on thermal findings",\n'
+            '  "hazmat_suspected": false,\n'
+            '  "summary": "2-3 sentence thermal assessment"\n'
+            "}\n\n"
+            "IMPORTANT RULES:\n"
+            "- For bbox_normalized: estimate heat zone location as [x1,y1,x2,y2] in 0.0-1.0 range\n"
+            "  where [0,0]=top-left, [1,1]=bottom-right. x1<x2, y1<y2.\n"
+            "- thermal_status: NORMAL = no concerning heat patterns, ELEVATED = minor anomalies worth monitoring,\n"
+            "  WARNING = significant heat anomalies requiring inspection, CRITICAL = dangerous heat levels.\n"
+            "- reefer_status: Check if the container appears to be a refrigerated unit.\n"
+            "  OPERATIONAL = cooling systems normal, DEGRADED = partial failure, FAILED = complete failure,\n"
+            "  NOT_APPLICABLE = not a reefer container.\n"
+            "- Even if the image is NOT actually a thermal image, still analyse it for any visible\n"
+            "  heat-related damage or patterns. Use visual cues to infer thermal state.\n"
+            "- If no thermal anomalies detected: return empty thermal_detections array [].\n"
+            "Return ONLY the JSON, no markdown, no explanation."
+        )
+        response = model.generate_content([prompt, img_pil])
+        text = response.text.strip()
+        if "```" in text:
+            m = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
+            if m:
+                text = m.group(1).strip()
+        result = json.loads(text)
+        result["_gemini_success"] = True
+        return result
+    except json.JSONDecodeError as exc:
+        return {"_gemini_success": False, "error": f"JSON parse error: {exc}"}
+    except Exception as exc:
+        return {"_gemini_success": False, "error": str(exc)}
+
+
+def annotate_thermal_boxes(image: Image.Image, detections: list) -> Image.Image:
+    """
+    Draws thermal-severity-coded bounding boxes on the thermal image.
+    Uses a distinct thermal color scheme: deep red for critical heat,
+    orange for severe, yellow for moderate, cyan for cold spots.
+    """
+    img = image.copy()
+    draw = ImageDraw.Draw(img)
+    w, h = img.size
+
+    THERMAL_COLORS = {
+        "critical": (220, 20, 20),      # Deep red — dangerous heat
+        "severe":   (255, 100, 0),       # Orange — significant heat
+        "moderate": (255, 200, 0),       # Yellow — elevated
+        "minor":    (0, 200, 220),       # Cyan — minor / cold anomaly
+    }
+
+    for det in detections:
+        bbox = det.get("bbox_normalized")
+        if not bbox or len(bbox) != 4:
+            continue
+        x1, y1, x2, y2 = [float(v) for v in bbox]
+        px1, py1 = int(x1 * w), int(y1 * h)
+        px2, py2 = int(x2 * w), int(y2 * h)
+        px1, py1 = max(4, px1), max(32, py1)
+        px2, py2 = min(w - 4, px2), min(h - 4, py2)
+        if px2 <= px1 or py2 <= py1:
+            continue
+        color = THERMAL_COLORS.get(det.get("severity", "moderate"), (255, 200, 0))
+        cls = det.get("class", "anomaly").upper().replace("_", " ")
+        conf = int(float(det.get("confidence", 0.85)) * 100)
+        label = f"{cls} [{conf}%]"
+        for offset in range(3):
+            draw.rectangle([px1-offset, py1-offset, px2+offset, py2+offset], outline=color)
+        lw = max(len(label) * 9, 80)
+        draw.rectangle([px1, py1-28, px1+lw, py1], fill=color)
+        draw.text((px1+4, py1-24), label, fill="white")
+    return img
+
+
+def page_thermal_inspector():
+    st.markdown("# 🌡️ Thermal Inspector — Infrared Anomaly Detection")
+    st.markdown(
+        "**Detecting hidden heat anomalies invisible to the naked eye** | Powered by *Thermal AI + Gemini Vision* "
+        "for reefer monitoring, hazmat heat signatures, and insulation breach detection."
+    )
+    st.markdown("---")
+
+    st.markdown(
+        '<div class="custom-info">ℹ️  Thermal imaging reveals <b>hidden risks</b> that structural '
+        'inspection cannot detect: overheating cargo, refrigeration failures, insulation breaches, '
+        'and hazmat heat signatures. Each gate lane is equipped with a <b>FLIR thermal camera</b> '
+        'operating at 7.5–14μm wavelength for surface temperature mapping. Results are logged '
+        'separately from structural inspections.</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown("---")
+
+    st.markdown("### 📸 Upload Thermal / Infrared Image")
+    st.markdown(
+        '<div class="custom-info" style="font-size:.85rem;">'
+        'ℹ️  Upload a <b>single thermal or infrared image</b> of a container. '
+        'The AI will analyse heat patterns, identify hotspots, and assess reefer system status. '
+        'A regular container photo can also be analysed for visual heat-related indicators.</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown("")
+
+    uploaded_thermal = st.file_uploader(
+        "🌡️ Upload Thermal Image (JPG / PNG)",
+        type=["jpg", "jpeg", "png"],
+        help="Upload a thermal/infrared image of a shipping container for heat anomaly analysis.",
+        key="thermal_uploader",
+    )
+
+    if uploaded_thermal is not None:
+        cache_key = f"thermal_ai_{uploaded_thermal.name}_{uploaded_thermal.size}"
+        if cache_key not in st.session_state:
+            img_bytes = uploaded_thermal.read()
+            with st.spinner("⚙️  Running Thermal AI analysis..."):
+                result = analyze_thermal_gemini(img_bytes)
+            st.session_state[cache_key] = (img_bytes, result)
+
+            # --- Insert single DB record with inspection_type='thermal' ---
+            if result.get("_gemini_success"):
+                thermal_status = result.get("thermal_status", "NORMAL")
+                detections = result.get("thermal_detections", [])
+                severity = db_utils.map_severity(detections)
+
+                thermal_routing = (
+                    "Clear for DP World BoxBay Automated Rack Loading."
+                    if thermal_status == "NORMAL"
+                    else "Thermal anomaly detected. Route to inspection bay for thermal verification."
+                )
+                iso_val = result.get("iso_code") or "N/A"
+                if not result.get("iso_valid"):
+                    iso_val = "FAILED_OCR"
+
+                db_utils.insert_log(
+                    iso_code=iso_val,
+                    damage_status=thermal_status,
+                    severity=severity,
+                    recommended_action=thermal_routing,
+                    inspection_type="thermal",
+                    location=terminal,
+                )
+        else:
+            img_bytes, result = st.session_state[cache_key]
+
+        if not result.get("_gemini_success"):
+            st.error(f"🔴 Thermal AI Error: {result.get('error', 'Unknown error')}")
+            st.image(Image.open(io.BytesIO(img_bytes)), use_container_width=True)
+        else:
+            thermal_status = result.get("thermal_status", "NORMAL")
+            reefer_status = result.get("reefer_status", "NOT_APPLICABLE")
+            routing = result.get("routing_action", "INSPECTION_HOLD")
+            detections = result.get("thermal_detections", [])
+
+            THERMAL_STYLES = {
+                "NORMAL":   ("custom-success", "✅", "NORMAL — No Heat Anomalies",       "badge-green"),
+                "ELEVATED": ("custom-info",    "🟡", "ELEVATED — Monitor",               "badge-blue"),
+                "WARNING":  ("custom-warning", "⚠️", "WARNING — Heat Anomaly Detected",  "badge-yellow"),
+                "CRITICAL": ("custom-danger",  "🔴", "CRITICAL — Dangerous Heat Level",  "badge-red"),
+            }
+            style_cls, icon, status_text, badge_cls = THERMAL_STYLES.get(
+                thermal_status, ("custom-info", "ℹ️", thermal_status, "badge-blue")
+            )
+
+            REEFER_STYLES = {
+                "OPERATIONAL":    ("🟢", "Reefer Operational",    "badge-green"),
+                "DEGRADED":       ("🟡", "Reefer Degraded",      "badge-yellow"),
+                "FAILED":         ("🔴", "Reefer FAILED",        "badge-red"),
+                "NOT_APPLICABLE": ("⚪", "Not a Reefer Unit",    "badge-blue"),
+            }
+            r_icon, r_label, r_badge = REEFER_STYLES.get(
+                reefer_status, ("⚪", reefer_status, "badge-blue")
+            )
+
+            ROUTING_META = {
+                "VESSEL_LOAD":      ("🟢", "Cleared for Vessel Loading",                   "custom-success"),
+                "INSPECTION_HOLD":  ("🟡", "Hold for Thermal Verification",                "custom-warning"),
+                "MAINTENANCE_YARD": ("🔴", "Redirect to Maintenance — Thermal Anomaly",    "custom-danger"),
+                "QUARANTINE":       ("☣️", "QUARANTINE — Hazmat Heat Signature",            "custom-danger"),
+            }
+            rt_icon, rt_label, rt_style = ROUTING_META.get(routing, ("🔵", routing, "custom-info"))
+
+            st.success(f"✅ **Thermal AI analysis complete** — infrared anomaly scan. Terminal: `{terminal}`")
+
+            col_img, col_result = st.columns([1.2, 1])
+
+            with col_img:
+                st.markdown("### 🌡️ AI-Annotated Thermal Frame")
+                img_pil = Image.open(io.BytesIO(img_bytes))
+                annotated = annotate_thermal_boxes(img_pil, detections) if detections else img_pil
+                st.image(annotated, use_container_width=True,
+                         caption=f"Thermal Vision Output — {len(detections)} heat zone(s) detected")
+
+                if detections:
+                    sev_icons = {"critical": "🔴", "severe": "🟠", "moderate": "🟡", "minor": "🔵"}
+                    parts = [
+                        f"{sev_icons.get(d.get('severity','moderate'),'⚪')} "
+                        f"{d.get('class','anomaly').replace('_',' ').title()} ({d.get('severity','?')}) "
+                        f"[{d.get('zone','?')}]"
+                        for d in detections
+                    ]
+                    st.markdown(
+                        f'<div class="custom-warning" style="font-size:.8rem;">'
+                        f"<b>Thermal Detections ({len(detections)}):</b><br> "
+                        + " &nbsp;|&nbsp; ".join(parts) + "</div>",
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(
+                        '<div class="custom-success" style="font-size:.8rem;">'
+                        "✅ No thermal anomalies detected</div>",
+                        unsafe_allow_html=True,
+                    )
+
+            with col_result:
+                st.markdown("### 📋 Thermal Inspection Result Card")
+                st.markdown(
+                    f'<div class="{style_cls}">'
+                    f'{icon} <b>THERMAL STATUS: {status_text}</b><br>'
+                    f'<span class="badge {badge_cls}">{thermal_status}</span>'
+                    f'<span class="badge badge-blue">THERMAL AI</span>'
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+                st.markdown("---")
+
+                # Reefer Status
+                st.markdown("**❄️ Reefer System Status**")
+                st.markdown(
+                    f'<div class="custom-info">{r_icon} <b>{r_label}</b><br>'
+                    f'<span class="badge {r_badge}">{reefer_status}</span></div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown("")
+
+                # ISO Code
+                st.markdown("**📦 ISO Container Code**")
+                iso = result.get("iso_code") or "Not readable in thermal image"
+                st.code(iso, language=None)
+                st.markdown("")
+
+                # Heat zone detections
+                st.markdown("**🔥 Heat Zone Analysis**")
+                if detections:
+                    for det in detections:
+                        sev = det.get("severity", "moderate").lower()
+                        sev_class = {
+                            "critical": "custom-danger", "severe": "custom-danger",
+                            "moderate": "custom-warning", "minor": "custom-info",
+                        }.get(sev, "custom-info")
+                        badge_sev = "badge-red" if sev in ("critical", "severe") else "badge-yellow"
+                        temp_delta = det.get("estimated_temp_delta", "N/A")
+                        st.markdown(
+                            f'<div class="{sev_class}" style="margin-bottom:6px;">'
+                            f"<b>{det.get('class','anomaly').replace('_',' ').title()}</b>"
+                            f" — {det.get('zone','?').capitalize()} zone"
+                            f' <span style="font-size:.75rem; color:#ff7b72;">({temp_delta})</span><br>'
+                            f"{det.get('description','')}<br>"
+                            f'<span class="badge {badge_sev}">{sev.upper()}</span> '
+                            f'<span style="font-size:.8rem;color:#8b949e;">'
+                            f"confidence: {int(float(det.get('confidence',0.85))*100)}%</span></div>",
+                            unsafe_allow_html=True,
+                        )
+                else:
+                    st.markdown(
+                        '<div class="custom-success">✅ <b>No heat anomalies detected.</b><br>'
+                        "Container thermal profile appears normal.</div>",
+                        unsafe_allow_html=True,
+                    )
+
+                # AI Summary
+                if result.get("summary"):
+                    st.markdown("**🧠 Thermal AI Assessment Summary**")
+                    st.markdown(
+                        f'<div class="custom-info" style="font-size:.85rem;">{result["summary"]}</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                # Routing Action
+                st.markdown("**🚦 Automated Routing Action**")
+                st.markdown(
+                    f'<div class="{rt_style}">{rt_icon} <b>{rt_label}</b><br>'
+                    f"{result.get('routing_reason', '')}</div>",
+                    unsafe_allow_html=True,
+                )
+
+                # TOS Sync
+                event_id = f"TOS-THR-{datetime.datetime.now(IST).strftime('%Y%m%d-%H%M%S')}"
+                st.markdown("**🔄 Terminal Operating System Sync**")
+                st.markdown(
+                    '<div class="cargoes-chip">🟢 Live Sync: DP World CARGOES TOS</div>'
+                    '<div class="custom-success" style="margin-top: 8px;">'
+                    "✅ <b>Thermal scan synced to DP World CARGOES TOS</b><br>"
+                    f"Event ID: <code>{event_id}</code><br>"
+                    "Reefer Alert Channel: <b>Notified via IoT Gateway</b></div>",
+                    unsafe_allow_html=True,
+                )
+                st.markdown("---")
+
+                with st.expander("🔬 Full Thermal AI Inspection Report"):
+                    display = {k: v for k, v in result.items() if not k.startswith("_")}
+                    display["inspection_id"] = event_id
+                    display["inspection_mode"] = "thermal"
+                    display["terminal"] = terminal
+                    display["timestamp_ist"] = datetime.datetime.now(IST).isoformat()
+                    display["model"] = "VisionGate Thermal AI"
+                    st.json(display)
+
+    else:
+        # Placeholder
+        st.markdown(
+            """
+            <div style='text-align:center; padding:60px 40px; background:#161b22;
+                        border:2px dashed #ff6b35; border-radius:16px; margin-top:20px;'>
+                <h2 style='color:#ff6b35;'>🌡️ No Thermal Image Uploaded</h2>
+                <p style='color:#8b949e;'>Upload a thermal or infrared container image above to begin heat anomaly analysis.<br>
+                The AI detects: hotspots, cold spots, reefer failures, insulation breaches, and hazmat heat signatures.<br>
+                Supported: JPG, JPEG, PNG — Max 200 MB</p>
+                <p style='color:#8b949e; font-size:.85rem;'>
+                💡 <b>Tip:</b> Any container image will work — the AI infers thermal patterns from visual cues.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown("---")
+        st.markdown("### 🔄 Thermal Inspection Workflow")
+        step_cols = st.columns(5)
+        steps = [
+            ("🌡️", "Thermal Capture", "FLIR camera captures infrared image"),
+            ("⚙️", "Heat Analysis", "AI identifies thermal anomalies & hotspots"),
+            ("❄️", "Reefer Check", "Refrigeration system status assessed"),
+            ("🚦", "Risk Routing", "Auto-routing based on thermal risk level"),
+            ("🔄", "TOS Sync", "CARGOES TOS updated, reefer alerts sent"),
+        ]
+        for col, (icon, title, desc) in zip(step_cols, steps):
+            col.markdown(
+                f"<div style='text-align:center;'><div style='font-size:2rem;'>{icon}</div>"
+                f"<b style='color:#ff6b35;'>{title}</b><br>"
                 f"<span style='font-size:.8rem; color:#8b949e;'>{desc}</span></div>",
                 unsafe_allow_html=True,
             )
@@ -1271,10 +1686,15 @@ def page_compliance_reports():
         real_logs = db_utils.fetch_logs_by_location(terminal)[:20]
         if real_logs:
             df = pd.DataFrame(real_logs)
-            df = df[["timestamp", "iso_code", "damage_status", "severity", "recommended_action"]]
+            # Rename inspection_type for display
+            if "inspection_type" in df.columns:
+                df["type"] = df["inspection_type"].str.capitalize()
+                df = df[["timestamp", "iso_code", "type", "damage_status", "severity", "recommended_action"]]
+            else:
+                df = df[["timestamp", "iso_code", "damage_status", "severity", "recommended_action"]]
             st.dataframe(df, use_container_width=True, hide_index=True)
         else:
-            st.info("No records processed yet for this terminal. Upload images in the Gate Inspector.")
+            st.info("No records processed yet for this terminal. Upload images in the Gate Inspector or Thermal Inspector.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1286,6 +1706,8 @@ def main():
         page_dashboard()
     elif page == "🔍 Gate Inspector (Vision AI)":
         page_gate_inspector()
+    elif page == "🌡️ Thermal Inspector":
+        page_thermal_inspector()
     elif page == "🤖 Yard Copilot (AI Chat)":
         page_yard_copilot()
     elif page == "📋 Compliance Reports":

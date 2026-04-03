@@ -6,10 +6,14 @@ Designed for the DP World Hackathon Grand Finale.
 
 Table: container_logs
 Columns: id, timestamp, iso_code, damage_status, severity,
-         recommended_action, location
+         recommended_action, location, inspection_type
 
-Every container scanned by the Gate Inspector is logged here.
-The ESG Dashboard and Yard Copilot both read from this DB.
+Every container scanned by the Gate Inspector or Thermal Inspector
+is logged here. The ESG Dashboard, Yard Copilot, and Compliance
+Reports all read from this DB.
+
+inspection_type: 'structural' (Gate Inspector dual-view) or
+                 'thermal' (Thermal Inspector infrared).
 """
 
 import sqlite3
@@ -35,6 +39,7 @@ def _get_connection() -> sqlite3.Connection:
 def init_db() -> None:
     """
     Creates the container_logs table if it doesn't already exist.
+    Also migrates the schema by adding `inspection_type` if missing.
     Called once on app startup — idempotent.
     """
     conn = _get_connection()
@@ -46,9 +51,15 @@ def init_db() -> None:
             damage_status       TEXT    NOT NULL,
             severity            TEXT    NOT NULL,
             recommended_action  TEXT    NOT NULL,
-            location            TEXT    NOT NULL
+            location            TEXT    NOT NULL,
+            inspection_type     TEXT    NOT NULL DEFAULT 'structural'
         )
     """)
+    # Migration: add inspection_type column to existing DBs that lack it
+    try:
+        conn.execute("ALTER TABLE container_logs ADD COLUMN inspection_type TEXT NOT NULL DEFAULT 'structural'")
+    except sqlite3.OperationalError:
+        pass  # Column already exists
     conn.commit()
     conn.close()
 
@@ -61,6 +72,7 @@ def insert_log(
     severity: str,
     recommended_action: str,
     location: str,
+    inspection_type: str = "structural",
     timestamp: str | None = None,
 ) -> int:
     """
@@ -71,15 +83,18 @@ def insert_log(
     iso_code : str
         ISO 6346 container code (or "N/A" if not readable).
     damage_status : str
-        Overall damage status: CLEAR, MINOR_DAMAGE, WARNING, CRITICAL.
+        Overall damage status: CLEAR, MINOR_DAMAGE, WARNING, CRITICAL
+        (structural) or NORMAL, ELEVATED, WARNING, CRITICAL (thermal).
     severity : str
         Simplified severity: Low, Medium, High.
     recommended_action : str
-        Routing action: VESSEL_LOAD, INSPECTION_HOLD, MAINTENANCE_YARD, QUARANTINE.
+        Routing action string.
     location : str
         Terminal name selected in the sidebar.
+    inspection_type : str
+        'structural' for Gate Inspector, 'thermal' for Thermal Inspector.
     timestamp : str, optional
-        ISO 8601 timestamp; defaults to current UTC time.
+        ISO 8601 timestamp; defaults to current IST time.
 
     Returns
     -------
@@ -93,10 +108,10 @@ def insert_log(
     cursor = conn.execute(
         """
         INSERT INTO container_logs
-            (timestamp, iso_code, damage_status, severity, recommended_action, location)
-        VALUES (?, ?, ?, ?, ?, ?)
+            (timestamp, iso_code, damage_status, severity, recommended_action, location, inspection_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (timestamp, iso_code, damage_status, severity, recommended_action, location),
+        (timestamp, iso_code, damage_status, severity, recommended_action, location, inspection_type),
     )
     row_id = cursor.lastrowid
     conn.commit()
@@ -117,7 +132,7 @@ def fetch_all_logs() -> list[dict]:
 
 
 def fetch_logs_today() -> list[dict]:
-    """Returns today's container_logs records (UTC date), newest first."""
+    """Returns today's container_logs records (IST date), newest first."""
     today = datetime.datetime.now(IST).strftime("%Y-%m-%d")
     conn = _get_connection()
     rows = conn.execute(
@@ -141,7 +156,7 @@ def fetch_logs_by_location(location: str) -> list[dict]:
 
 # ─── Aggregation & Analytics ────────────────────────────────────────────────
 
-def get_summary_stats(location: str | None = None) -> dict:
+def get_summary_stats(location: str | None = None, inspection_type: str | None = None) -> dict:
     """
     Returns aggregated statistics from the container_logs table.
     Used by the ESG Dashboard for dynamic metric calculation.
@@ -156,47 +171,70 @@ def get_summary_stats(location: str | None = None) -> dict:
     ----------
     location : str, optional
         If provided, filters stats to a specific terminal.
+    inspection_type : str, optional
+        If provided, filters stats by inspection type ('structural' or 'thermal').
 
     Returns
     -------
     dict with keys:
         total_processed, cleared, damaged, high_severity,
-        idling_hours_saved, co2_tons_saved
+        idling_hours_saved, co2_tons_saved, manpower_hours_saved,
+        fte_saved, current_gate_queue_seconds
     """
     conn = _get_connection()
 
-    base_query = "FROM container_logs"
-    params: tuple = ()
+    conditions = []
+    params: list = []
     if location:
-        base_query += " WHERE location = ?"
-        params = (location,)
+        conditions.append("location = ?")
+        params.append(location)
+    if inspection_type:
+        conditions.append("inspection_type = ?")
+        params.append(inspection_type)
 
-    total = conn.execute(f"SELECT COUNT(*) {base_query}", params).fetchone()[0]
+    where_clause = ""
+    if conditions:
+        where_clause = " WHERE " + " AND ".join(conditions)
+
+    base_query = f"FROM container_logs{where_clause}"
+    param_tuple = tuple(params)
+
+    total = conn.execute(f"SELECT COUNT(*) {base_query}", param_tuple).fetchone()[0]
+
+    # For cleared/high_sev, add to existing conditions
+    cleared_conditions = conditions + ["damage_status = 'CLEAR'"]
+    cleared_where = " WHERE " + " AND ".join(cleared_conditions)
     cleared = conn.execute(
-        f"SELECT COUNT(*) {base_query}{' AND' if location else ' WHERE'} damage_status = 'CLEAR'",
-        params,
+        f"SELECT COUNT(*) FROM container_logs{cleared_where}",
+        param_tuple,
     ).fetchone()[0]
+
+    high_sev_conditions = conditions + ["severity = 'High'"]
+    high_sev_where = " WHERE " + " AND ".join(high_sev_conditions)
     high_sev = conn.execute(
-        f"SELECT COUNT(*) {base_query}{' AND' if location else ' WHERE'} severity = 'High'",
-        params,
+        f"SELECT COUNT(*) FROM container_logs{high_sev_where}",
+        param_tuple,
     ).fetchone()[0]
-    today_prefix = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")    
+
+    today_prefix = datetime.datetime.now(IST).strftime("%Y-%m-%d")
+    high_sev_today_conditions = conditions + ["severity = 'High'", "timestamp LIKE ?"]
+    high_sev_today_where = " WHERE " + " AND ".join(high_sev_today_conditions)
     high_sev_today = conn.execute(
-        f"SELECT COUNT(*) {base_query}{' AND' if location else ' WHERE'} severity = 'High' AND timestamp LIKE ?",
-        params + (f"{today_prefix}%",),
+        f"SELECT COUNT(*) FROM container_logs{high_sev_today_where}",
+        tuple(params + [f"{today_prefix}%"]),
     ).fetchone()[0]
-    
+
     conn.close()
 
     damaged = total - cleared
     idling_hours = round(total * 5 / 60, 2)
     co2_tons = round(idling_hours * 10 / 1000, 4)
-    
-    # ─── New Live Metrics Assumptions ───
+
+    # ─── Live Metrics Assumptions ───
     # Assumption 1: Manpower Saved. 5 mins per container. 8 hours = 1 FTE
     manpower_hours = round(total * 5 / 60, 1)
     fte_saved = round(manpower_hours / 8, 1)
-    
+
     # Assumption 2: Gate Queue Time. Base 14s + 0.5s per high-severity container today
     gate_queue = 14.0 + (0.5 * high_sev_today)
 
@@ -210,6 +248,68 @@ def get_summary_stats(location: str | None = None) -> dict:
         "manpower_hours_saved": manpower_hours,
         "fte_saved": fte_saved,
         "current_gate_queue_seconds": gate_queue,
+    }
+
+
+def get_thermal_stats(location: str | None = None) -> dict:
+    """
+    Returns thermal-specific aggregated statistics.
+    Completely separate from structural metrics.
+
+    Thermal Metrics:
+        - total_thermal_scans: total thermal inspections
+        - heat_anomalies: count where thermal status != NORMAL/CLEAR
+        - critical_thermal: count where severity = 'High'
+        - anomaly_rate: percentage of scans with issues
+
+    Parameters
+    ----------
+    location : str, optional
+        If provided, filters to a specific terminal.
+
+    Returns
+    -------
+    dict with thermal-specific keys
+    """
+    conn = _get_connection()
+
+    conditions = ["inspection_type = 'thermal'"]
+    params: list = []
+    if location:
+        conditions.append("location = ?")
+        params.append(location)
+
+    where_clause = " WHERE " + " AND ".join(conditions)
+    param_tuple = tuple(params)
+
+    total = conn.execute(
+        f"SELECT COUNT(*) FROM container_logs{where_clause}", param_tuple
+    ).fetchone()[0]
+
+    # Heat anomalies: anything not NORMAL or CLEAR
+    anomaly_conditions = conditions + ["damage_status NOT IN ('NORMAL', 'CLEAR')"]
+    anomaly_where = " WHERE " + " AND ".join(anomaly_conditions)
+    anomalies = conn.execute(
+        f"SELECT COUNT(*) FROM container_logs{anomaly_where}", param_tuple
+    ).fetchone()[0]
+
+    # Critical thermal alerts
+    critical_conditions = conditions + ["severity = 'High'"]
+    critical_where = " WHERE " + " AND ".join(critical_conditions)
+    critical = conn.execute(
+        f"SELECT COUNT(*) FROM container_logs{critical_where}", param_tuple
+    ).fetchone()[0]
+
+    conn.close()
+
+    anomaly_rate = round((anomalies / total) * 100, 1) if total > 0 else 0.0
+
+    return {
+        "total_thermal_scans": total,
+        "heat_anomalies": anomalies,
+        "critical_thermal": critical,
+        "normal_scans": total - anomalies,
+        "anomaly_rate": anomaly_rate,
     }
 
 
@@ -252,39 +352,65 @@ def get_db_context_for_llm(location: str | None = None) -> str:
     """
     Builds a formatted text summary of the database for injection into
     the Yard Copilot's LLM system prompt. This enables the AI to answer
-    questions like "summarise damaged containers today" with real data.
+    questions about both structural and thermal inspections with real data.
     """
-    stats = get_summary_stats(location)
+    stats = get_summary_stats(location, inspection_type='structural')
+    thermal_stats = get_thermal_stats(location)
     logs_today = fetch_logs_today()
     all_logs = fetch_all_logs()
 
+    # Separate today's logs by type
+    structural_today = [l for l in logs_today if l.get('inspection_type', 'structural') == 'structural']
+    thermal_today = [l for l in logs_today if l.get('inspection_type') == 'thermal']
+
     lines = [
         "=== VisionGate AI Database Summary ===",
-        f"Total containers ever processed: {stats['total_processed']}",
+        "",
+        "--- STRUCTURAL INSPECTIONS (Gate Inspector) ---",
+        f"Total containers processed (structural): {stats['total_processed']}",
         f"Cleared for loading: {stats['cleared']}",
         f"Damaged (diverted): {stats['damaged']}",
         f"High-severity incidents: {stats['high_severity']}",
         f"Truck idling hours saved: {stats['idling_hours_saved']} hrs",
         f"CO₂ emissions prevented: {stats['co2_tons_saved']} Tons",
         "",
-        f"=== Today's Inspections ({len(logs_today)} records) ===",
+        "--- THERMAL INSPECTIONS (Thermal Inspector) ---",
+        f"Total thermal scans: {thermal_stats['total_thermal_scans']}",
+        f"Heat anomalies detected: {thermal_stats['heat_anomalies']}",
+        f"Critical thermal alerts: {thermal_stats['critical_thermal']}",
+        f"Normal scans: {thermal_stats['normal_scans']}",
+        f"Anomaly rate: {thermal_stats['anomaly_rate']}%",
+        "",
+        f"=== Today's Structural Inspections ({len(structural_today)} records) ===",
     ]
 
-    for log in logs_today[:20]:  # Cap at 20 to avoid token bloat
+    for log in structural_today[:15]:
         lines.append(
             f"  [{log['timestamp']}] ISO: {log['iso_code']} | "
             f"Status: {log['damage_status']} | Severity: {log['severity']} | "
             f"Action: {log['recommended_action']} | Location: {log['location']}"
         )
 
-    if not logs_today:
-        lines.append("  No inspections today yet.")
+    if not structural_today:
+        lines.append("  No structural inspections today yet.")
+
+    lines.append(f"\n=== Today's Thermal Inspections ({len(thermal_today)} records) ===")
+    for log in thermal_today[:15]:
+        lines.append(
+            f"  [{log['timestamp']}] ISO: {log.get('iso_code', 'N/A')} | "
+            f"Thermal Status: {log['damage_status']} | Severity: {log['severity']} | "
+            f"Action: {log['recommended_action']} | Location: {log['location']}"
+        )
+
+    if not thermal_today:
+        lines.append("  No thermal inspections today yet.")
 
     if len(all_logs) > len(logs_today):
         lines.append(f"\n=== Historical Records (last 10 of {len(all_logs)} total) ===")
         for log in all_logs[:10]:
+            itype = log.get('inspection_type', 'structural').upper()
             lines.append(
-                f"  [{log['timestamp']}] ISO: {log['iso_code']} | "
+                f"  [{itype}] [{log['timestamp']}] ISO: {log['iso_code']} | "
                 f"Status: {log['damage_status']} | Severity: {log['severity']} | "
                 f"Action: {log['recommended_action']} | Location: {log['location']}"
             )

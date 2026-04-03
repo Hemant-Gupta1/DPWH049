@@ -58,6 +58,7 @@ Truck Arrives → Dual-Camera Capture (Left + Right Views) → Edge AI / Gemini 
 - **Multi-Language Interface Support:** Extensible localization (English, Arabic, Hindi) bridging global operators.
 - **Our World, Our Future - Impact Tracker:** Real-time throughput charting and Scope 3 Net Zero 2050 tracking.
 - **Dual-View Container Inspection:** Two side-angle images (left/front + right/rear) analysed together in a single unified AI pass for comprehensive 360° damage detection and ISO code parsing.
+- **🌡️ Thermal / Infrared Inspection:** Dedicated thermal imaging page for detecting hidden heat anomalies — reefer failures, insulation breaches, overheating cargo, and hazmat heat signatures — with completely separate metrics from structural inspection.
 - **CARGOES Copilot AI Chat:** Contextual querying of live TOS terminal data and port status.
 - **Downloadable Reports:** "DP World Official Gate Audit" logs for strict compliance processing.
 
@@ -67,6 +68,8 @@ Truck Arrives → Dual-Camera Capture (Left + Right Views) → Edge AI / Gemini 
 |---|---|---|
 | Container damage detection | Manual visual inspection (5 min) | Dual-view Edge AI / Gemini Vision (15 sec) |
 | ISO code reading | Manual OCR / human reading | Automated OCR (99.7% accuracy) |
+| Thermal anomaly detection | Expensive handheld FLIR cameras | AI-powered thermal analysis from gate camera |
+| Reefer failure prevention | Manual temperature logging | Automated real-time reefer status assessment |
 | Damage routing decisions | Human supervisor | Automated gate barrier + yard routing |
 | Audit trail | Paper log books (3–5% error rate) | Immutable AI-generated reports |
 | Multi-terminal coordination | Phone calls / emails | Real-time TOS API sync |
@@ -112,22 +115,23 @@ DP World operates in **70+ countries**. VisionGate is built for global ubiquity 
 ## 🏗️ Application Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                      VisionGate AI                              │
-│                  (Streamlit Frontend)                           │
-├───────────────┬───────────────┬──────────────┬─────────────────┤
-│  Page 1       │  Page 2       │  Page 3      │  Page 4         │
-│  Global       │  Gate         │  Yard        │  Compliance     │
-│  Dashboard    │  Inspector    │  Copilot     │  Reports        │
-│  (ESG)        │  (Vision AI)  │  (AI Chat)   │  (Audit)        │
-├───────────────┴───────────────┴──────────────┴─────────────────┤
-│                   Simulated Backend Layer                       │
-│  ┌──────────────┐  ┌─────────────────┐  ┌────────────────────┐ │
-│  │  PIL/YOLOv8  │  │  Gemini LLM     │  │  SQLite Database   │ │
-│  │  (Bounding   │  │  (Yard Copilot) │  │  (container_logs)  │ │
-│  │   Boxes)     │  │  (RAG w/ DB)    │  │  Local DB Storage  │ │
-│  └──────────────┘  └─────────────────┘  └────────────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                          VisionGate AI                              │
+│                      (Streamlit Frontend)                           │
+├───────────────┬───────────────┬────────────────┬─────────────┬───────────────┤
+│  Page 1        │  Page 2        │  Page 5          │  Page 3      │  Page 4        │
+│  Global        │  Gate          │  Thermal         │  Yard        │  Compliance    │
+│  Dashboard     │  Inspector     │  Inspector       │  Copilot     │  Reports       │
+│  (ESG)         │  (Vision AI)   │  (Infrared AI)   │  (AI Chat)  │  (Audit)       │
+├───────────────┴───────────────┴────────────────┴─────────────┴───────────────┤
+│                      Simulated Backend Layer                        │
+│  ┌──────────────┐  ┌─────────────────┐  ┌────────────────────┐  │
+│  │  PIL/YOLOv8  │  │  Gemini LLM      │  │  SQLite Database    │  │
+│  │  (Bounding   │  │  (Yard Copilot)  │  │  (container_logs)   │  │
+│  │   Boxes)     │  │  (RAG w/ DB)     │  │  inspection_type:   │  │
+│  └──────────────┘  └─────────────────┘  │  structural/thermal │  │
+│                                          └────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Production Architecture (What It Would Scale To)
@@ -165,6 +169,15 @@ Truck → Gate Cameras (4x) → NVIDIA Jetson Orin (Edge Node)
 - **Dual Annotated Images**: Both views displayed with independent, view-specific bounding boxes. Detections from each view are correctly drawn on the corresponding image.
 - **PIL bounding boxes**: Dynamic severity-coded annotation overlays (red=critical/severe, amber=moderate, blue=minor) driven by Gemini Vision's spatial reasoning.
 - **Unified Inspection Result Card**: Single result card covering both views — ISO 6346 validation, structural status, auto-routing decision, with each damage tagged by its source view.
+
+### Page 5 — Thermal Inspector (🌡️ Infrared AI)
+- **Single Image Upload**: Upload one thermal or infrared image per inspection. No dual-view required.
+- **Dedicated Thermal AI Prompt**: Completely separate Gemini prompt focused on thermal pattern recognition — hotspots, cold spots, reefer failures, insulation breaches, overheating cargo, and hazmat heat signatures.
+- **Thermal-Specific Bounding Boxes**: Heat-zone annotations with a thermal color scheme (deep red=critical, orange=severe, yellow=elevated, cyan=cold).
+- **Reefer System Status**: Dedicated assessment of refrigeration unit health (OPERATIONAL/DEGRADED/FAILED/NOT_APPLICABLE).
+- **Separate DB Records**: Logged with `inspection_type='thermal'` — never mixed with structural metrics.
+- **Thermal Inspection Result Card**: Thermal status, reefer status, heat zone detections, temperature delta estimates, and routing action.
+- **TOS Sync**: Thermal alerts synced to CARGOES TOS with reefer-specific IoT Gateway notifications.
 
 ### Page 3 — CARGOES Copilot (AI Chat) & Document RAG
 - **Attach Operational PDF (RAG)**: Users can upload PDF documents (like shipping manifests or hazmat regulations). The system instantly extracts the text and injects it into the AI's context window, allowing dynamic query responses grounded in the uploaded document.
@@ -398,6 +411,68 @@ The rich Gemini Vision severity labels are simplified for database storage and d
 | **Example** | `MSCU 1234567` |
 | **Validation** | Gemini Vision returns `iso_valid: true/false` based on conformance to ISO 6346 pattern |
 | **Failed OCR Handling** | If `iso_valid = false`, the code is stored as `FAILED_OCR` in the database |
+
+---
+
+### 🌡️ Page 5 — Thermal Inspector Metrics & Detection Logic
+
+#### 17. Thermal AI Inference
+
+| Property | Value |
+|---|---|
+| **Model** | `gemini-2.5-flash` (Google DeepMind) |
+| **Input** | Single thermal/infrared container image (JPG/PNG) |
+| **Output** | Structured JSON: `iso_code`, `thermal_detections[]` (each with `zone`, `estimated_temp_delta`, `bbox_normalized`), `thermal_status`, `reefer_status`, `routing_action`, `summary` |
+| **Source** | `app.py → analyze_thermal_gemini()` |
+| **Key Behaviour** | Analyses heat patterns, hotspots, cold spots, and insulation integrity. Even works on regular photos by inferring thermal state from visual cues. |
+
+#### 18. Thermal Detection Classes
+
+| Detection Class | Description |
+|---|---|
+| `hotspot` | Abnormally high surface temperature zone |
+| `cold_spot` | Abnormally low temperature — possible insulation failure |
+| `insulation_breach` | Thermal bridge indicating wall/roof insulation damage |
+| `reefer_failure` | Refrigeration system malfunction detected via heat pattern |
+| `overheating_cargo` | Cargo generating excess heat (chemical reaction, electrical) |
+| `hazmat_heat` | Heat signature consistent with hazardous material reaction |
+| `thermal_gradient` | Unusual temperature gradient across container surface |
+
+#### 19. Thermal Status Mapping
+
+| Thermal Status | Meaning | Routing Action |
+|---|---|---|
+| `NORMAL` | No concerning heat patterns | `VESSEL_LOAD` |
+| `ELEVATED` | Minor anomalies worth monitoring | `INSPECTION_HOLD` |
+| `WARNING` | Significant heat anomalies | `MAINTENANCE_YARD` |
+| `CRITICAL` | Dangerous heat levels | `QUARANTINE` |
+
+#### 20. Reefer System Status
+
+| Reefer Status | Description |
+|---|---|
+| `OPERATIONAL` | Cooling systems functioning normally |
+| `DEGRADED` | Partial cooling failure — requires maintenance |
+| `FAILED` | Complete refrigeration failure — cargo at risk |
+| `NOT_APPLICABLE` | Container is not a refrigerated unit |
+
+#### 21. Thermal Bounding Box Color Scheme
+
+| Severity | RGB Color | Visual |
+|---|---|---|
+| `critical` | `(220, 20, 20)` | 🔴 Deep red — dangerous heat |
+| `severe` | `(255, 100, 0)` | 🟠 Orange — significant heat |
+| `moderate` | `(255, 200, 0)` | 🟡 Yellow — elevated |
+| `minor` | `(0, 200, 220)` | 🔵 Cyan — minor / cold anomaly |
+
+#### 22. Database Separation
+
+| Property | Value |
+|---|---|
+| **Column** | `inspection_type` (added to `container_logs` table) |
+| **Values** | `'structural'` (Gate Inspector) or `'thermal'` (Thermal Inspector) |
+| **Behaviour** | Dashboard structural metrics filter by `inspection_type='structural'`. Thermal metrics filter by `inspection_type='thermal'`. The two are **never mixed**. |
+| **Migration** | `ALTER TABLE` adds column with `DEFAULT 'structural'` for existing rows |
 
 ---
 
@@ -739,7 +814,7 @@ streamlit run app.py --server.headless true --server.port 8501 --server.address 
 Use the **left sidebar** to:
 1. **Select your terminal** — Choose between Dubai, Mumbai, London, Karachi, or Dominican Republic
 2. **Switch language** — English, Arabic, or Hindi (UI simulation)
-3. **Navigate pages** — Click any of the 4 radio buttons
+3. **Navigate pages** — Click any of the 5 radio buttons
 
 ---
 
@@ -768,6 +843,22 @@ Use the **left sidebar** to:
    - Each detection is tagged with its source view (View 1 or View 2)
 6. Read the **Unified Inspection Result Card** on the right — single decision covering both views
 7. Expand **"Full Edge AI Inspection Report"** to see the raw AI JSON output (includes `inspection_mode: dual-view`)
+
+---
+
+### Page 5: Thermal Inspector (🌡️ Infrared AI)
+
+1. Click **"🌡️ Thermal Inspector"** in the sidebar
+2. Upload a **single thermal/infrared image** (or any container photo to see the visual inference)
+3. Wait for the **Thermal AI inference** spinner to complete
+4. View the **annotated thermal image** with severity-coded heat zones:
+   - 🔴 Deep red = Critical/Dangerous heat level
+   - 🟠 Orange = Severe heat anomaly
+   - 🟡 Yellow = Elevated heat/monitoring required
+   - 🔵 Cyan = Cold anomaly (potential insulation failure)
+5. Check the **Reefer System Status** indicator
+6. Read the **Thermal Inspection Result Card** to see the automated routing action
+7. Expand **"Full Thermal AI Inspection Report"** to see `inspection_mode: thermal` and specific heat delta estimates
 
 ---
 
@@ -806,11 +897,12 @@ Use the **left sidebar** to:
 │  🚛 Truck Arrives                                      │
 │       │                                               │
 │  📷 4x Camera Array (front/rear/left/right panels)    │
+│  🌡️ FLIR Thermal Camera (7.5–14μm wavelength)         │
 │       │                                               │
 │  ⚙️  NVIDIA Jetson Orin (Edge Node)                   │
-│       ├── YOLOv8 INT8: Damage Detection (< 200ms)     │
+│       ├── YOLOv8 INT8: Structural Damage (< 200ms)    │
 │       ├── EasyOCR: ISO 6346 Code Reading              │
-│       └── Hazmat Classifier: IMDG Code Check          │
+│       └── Thermal AI: Heat Anomaly Detection          │
 │       │                                               │
 └───────┼───────────────────────────────────────────────┘
         │
