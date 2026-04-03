@@ -1,4 +1,4 @@
-# 🚢 VisionGate AI — DP World Hackathon Prototype
+# 🚢 VisionGate AI | Powered by DP World CARGOES
 
 <div align="center">
 
@@ -9,6 +9,8 @@
 ![ESG](https://img.shields.io/badge/ESG-Our%20World%2C%20Our%20Future-2ea043?style=for-the-badge)
 
 **Automated, AI-Driven Gate Triage System for Global Port Terminals**
+
+*"Making trade flow better, changing what's possible."*
 
 *Replacing 5-minute manual inspections with 14-second autonomous AI pipelines*
 
@@ -50,12 +52,13 @@ Truck Arrives → Existing CCTV Capture → Edge AI / Gemini Vision → ISO OCR 
 ![Alt text for the image](images/7.png) 
 
 ### Key Features Included
+- **DP World CARGOES Integration:** Native simulation of live sync with CARGOES TOS and BoxBay smart routing.
 - **Switching Between DP World Global Terminals:** Instantly toggle terminal operations context.
 - **Multi-Language Interface Support:** Extensible localization (English, Arabic, Hindi) bridging global operators.
-- **Global Operations Dashboard Analysis:** Real-time throughput charting and ESG metric tracking.
+- **Our World, Our Future - Impact Tracker:** Real-time throughput charting and Scope 3 Net Zero 2050 tracking.
 - **Container Image Analysis:** Dynamic AI-annotated container damage detection and ISO code parsing.
-- **Yard Copilot AI Chat:** Contextual querying of live TOS terminal data and port status.
-- **Downloadable Reports:** Automated gate audit logs for strict compliance processing.
+- **CARGOES Copilot AI Chat:** Contextual querying of live TOS terminal data and port status.
+- **Downloadable Reports:** "DP World Official Gate Audit" logs for strict compliance processing.
 
 ### The Problem It Solves
 
@@ -146,24 +149,27 @@ Truck → Gate Cameras (4x) → NVIDIA Jetson Orin (Edge Node)
 
 ## 🔧 Feature Breakdown
 
-### Page 1 — Global Dashboard (ESG)
-- **Dynamic Database Metrics**: Real-time DB lookup for total containers processed, real idling saved, and true Scope 3 CO₂ prevented.
+### Page 1 — Our World, Our Future - Impact Tracker
+- **Dynamic Database Metrics**: Real-time DB lookup for total containers processed, real idling saved, and true Scope 3 CO₂ prevented (Aligned with DP World Net Zero 2050).
 - **ESG Gauges**: Progress bars for carbon, safety, and efficiency targets.
 - **Hourly throughput chart**: 24-hour bar chart with pandas + Streamlit charting.
 
 ### Page 2 — Gate Inspector (Vision AI)
 - **Database Persistence**: Fully persists analysis (iso_code, damage_status, severity, routing) to SQLite.
+- **CARGOES Live Sync**: Displays dynamic "🟢 Live Sync: DP World CARGOES TOS" verification.
+- **BoxBay Smart Routing**: Automatically routes CLEAN containers to DP World BoxBay Automated Rack Loading, or DAMAGED to JAFZA Maintenance Depot.
 - **Image uploader**: JPG/PNG container photo upload
 - **PIL bounding boxes**: Dynamic red (damage) and green (ISO code) annotation overlays with Gemini Vision's rich metadata.
 - **Inspection Result Card**: ISO 6346 validation, structural status, auto-routing decision.
 
-### Page 3 — Yard Copilot (AI Chat)
-- **Real Gemini LLM Chat**: Yard Copilot responds to contextual queries using `gemini-1.5-flash`.
+### Page 3 — CARGOES Copilot (AI Chat)
+- **DP World Domain Persona**: AI is primed as the "DP World CARGOES AI Copilot", strictly adhering to safety protocols and the "Make Trade Flow" vision.
+- **Real Gemini LLM Chat**: CARGOES Copilot responds to contextual queries using `gemini-1.5-flash`.
 - **System Prompt RAG**: The LLM is primed dynamically with full context from the SQLite database.
 - **Streamlit native chat** integrated (`st.chat_message` / `st.chat_input`).
 
 ### Page 4 — Compliance Reports
-- **Download Gate Audit Report (PDF)**: Generates a professional, legally-defensible PDF document using `fpdf2` directly from the SQLite database.
+- **Download Gate Audit Report (PDF)**: Generates a professional, legally-defensible "DP World Official Gate Audit" PDF document, uniquely branded for the DP World Innovation Hackathon using `fpdf2` directly from the SQLite database.
 - **Live Audit Log**: Renders a live Pandas dataframe fetched straight from the edge database.
 - **Regulatory framework**: ISO 6346, SOLAS VII, IMO FAL, IMDG compliance cards.
 
@@ -342,7 +348,7 @@ Use the **left sidebar** to:
 
 ---
 
-### Page 1: Global Dashboard (ESG)
+### Page 1: Our World, Our Future - Impact Tracker
 
 1. Open the app → You are on the Dashboard by default
 2. View the **4 KPI metric cards** at the top
@@ -366,7 +372,7 @@ Use the **left sidebar** to:
 
 ---
 
-### Page 3: Yard Copilot (AI Chat)
+### Page 3: CARGOES Copilot (AI Chat)
 
 1. Click **"Yard Copilot (AI Chat)"** in the sidebar
 2. Read the AI greeting message
