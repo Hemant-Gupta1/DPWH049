@@ -59,6 +59,7 @@ Truck Arrives → Dual-Camera Capture (Left + Right Views) → Edge AI / Gemini 
 - **🚢 Ship Delay & Logistics Hub:** Allows operators to log vessel delays and directly trigger live SMTP email communications with grounded truck drivers.
 - **Premium UI/UX Design Engine:** Custom glassmorphism interfaces, smooth sidebar transitions, interactive hover components, and dynamic glowing text overlays tailored to give a responsive, futuristic terminal feel.
 - **Dual-View Container Inspection:** Two side-angle images (left/front + right/rear) analysed together in a single unified AI pass for comprehensive 360° damage detection and ISO code parsing.
+- **📄 Cargo Document Cross-Referencing (Multi-Modal Vision/Doc AI):** Optionally attach an operational Bill of Lading or Customs Manifest (PDF only). The Gemini AI cross-references declared cargo constraints (e.g., hazmat declarations, declared weight classes, seal numbers) against the physical visual evidence from the container gate cameras to flag high-risk discrepancies automatically.
 - **⛈️ Weather-Contextual Vulnerability Assessment:** AI cross-references container damage against live terminal weather forecasts to prevent cargo loss (e.g., predicting water ingress due to a rust hole during monsoon warnings).
 - **🌡️ Thermal / Infrared Inspection:** Dedicated thermal imaging page for detecting hidden heat anomalies — reefer failures, insulation breaches, overheating cargo, and hazmat heat signatures — with completely separate metrics from structural inspection.
 - **CARGOES Copilot AI Chat:** Contextual querying of live TOS terminal data and port status.
@@ -73,6 +74,7 @@ Truck Arrives → Dual-Camera Capture (Left + Right Views) → Edge AI / Gemini 
 | Thermal anomaly detection | Expensive handheld FLIR cameras | AI-powered thermal analysis from gate camera |
 | Reefer failure prevention | Manual temperature logging | Automated real-time reefer status assessment |
 | Damage routing decisions | Human supervisor | Automated gate barrier + yard routing |
+| Cargo manifest verification | Manual clerical cross-checking | Multi-Modal Doc/Vision AI comparison |
 | Audit trail | Paper log books (3–5% error rate) | Immutable AI-generated reports |
 | Multi-terminal coordination | Phone calls / emails | Real-time TOS API sync |
 | ESG tracking | Manual spreadsheets | Live AI-calculated CO₂ metrics |
@@ -163,7 +165,11 @@ Truck → Gate Cameras (4x) → NVIDIA Jetson Orin (Edge Node)
 
 ### Page 2 — Gate Inspector (Dual-View Vision AI)
 - **Dual-View Upload (Compulsory)**: Two side-by-side file uploaders — View 1 (Left/Front Panel) and View 2 (Right/Rear Panel). Both images are required; the system will not proceed until both are uploaded. This simulates the real dual-camera gate array.
-- **Unified Multi-Image AI Analysis**: Both images are sent to Gemini Vision in a **single API call** with a multi-image prompt. The AI analyses them as two views of the **same container** and returns one unified JSON result. Each `damage_detection` is tagged with `"view": 1` or `"view": 2` to indicate which image it belongs to.
+- **📄 Cargo Document Verification (Optional PDF)**: Gate operators can attach an official Bill of Lading, Customs Manifest, or Transport Document (PDF format only).
+  - The text is extracted using `PyPDF2` entirely on the frontend/edge.
+  - The context is injected directly into the Gemini multi-modal prompt, allowing the AI to holistically cross-reference the visual damage state of the container against declared cargo logs.
+  - *Example:* If the PDF reports "Hazardous Material: NONE", but the vision pipeline detects an orange hazmat placard on the doors, the AI flags a critical discrepancy in its summary, preventing illicit loading.
+- **Unified Multi-Image AI Analysis**: Both images (and optionally, the cargo document text) are sent to Gemini Vision in a **single API call** with a multi-image prompt. The AI analyses them as two views of the **same container** and returns one unified JSON result. Each `damage_detection` is tagged with `"view": 1` or `"view": 2` to indicate which image it belongs to.
 - **Single DB Record**: Despite uploading 2 images, only **1 record** is inserted into `container_logs`. Dashboard, Copilot, and Compliance all treat the dual-view inspection as a single container.
 - **Database Persistence**: Fully persists unified analysis (iso_code, damage_status, severity, routing) to SQLite.
 - **CARGOES Live Sync**: Displays dynamic "🟢 Live Sync: DP World CARGOES TOS" verification.
@@ -597,11 +603,12 @@ The following **mock values** are used as contextual reference data (not derived
 ### 🔗 Complete Metric Dependency Chain
 
 ```
-Dual-View Container Image Upload (2 images = 1 container)
+Dual-View Container Image Upload (2 images = 1 container) + Optional Cargo Document (PDF)
   ├── View 1 (Left / Front Panel)
   ├── View 2 (Right / Rear Panel)
+  ├── Cargo Manifest.pdf (text extracted via PyPDF2)
   │
-  └── Gemini Vision AI Inference (single multi-image API call)
+  └── Gemini Vision AI Inference (single multi-image + text contextual API call)
        ├── iso_code → DB: iso_code (best view used)
        ├── damage_detections[] (each tagged view:1 or view:2)
        │    └── map_severity() → DB: severity (Low/Medium/High)
@@ -863,14 +870,15 @@ Use the **left sidebar** to:
 3. Upload **View 2** (Right / Rear Panel) — a second image of the **same container** from a different angle
    - ⚠️ *Both images are required — analysis will not proceed with only one*
    - 💡 *Use any 2 container images from Google Images to see the AI in action*
-4. Wait for the **Dual-View Edge AI inference** spinner to complete
-5. View **both annotated images** with severity-coded bounding boxes:
+4. *(Optional)* Expand the **"📄 Attach Cargo Document"** panel and upload a `PDF` Bill of Lading or Customs Manifest. The AI will look for hazmat/weight discrepancies.
+5. Wait for the **Dual-View Edge AI inference** spinner to complete
+6. View **both annotated images** with severity-coded bounding boxes:
    - 🔴 Red/Orange box = Critical/Severe damage
    - 🟡 Amber box = Moderate damage
    - 🔵 Blue box = Minor damage
    - Each detection is tagged with its source view (View 1 or View 2)
-6. Read the **Unified Inspection Result Card** on the right — single decision covering both views
-7. Expand **"Full Edge AI Inspection Report"** to see the raw AI JSON output (includes `inspection_mode: dual-view`)
+7. Read the **Unified Inspection Result Card** on the right — single decision covering both views. Any PDF manifest discrepancies will appear in the final summary.
+8. Expand **"Full Edge AI Inspection Report"** to see the raw AI JSON output (includes `inspection_mode: dual-view`)
 
 ---
 

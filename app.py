@@ -331,13 +331,14 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
     except Exception as e:
         return f"[Error extracting PDF text: {str(e)}]"
 
-def analyze_container_gemini_dual(img_bytes_1: bytes, img_bytes_2: bytes, weather_context: str = "Clear") -> dict:
+def analyze_container_gemini_dual(img_bytes_1: bytes, img_bytes_2: bytes, weather_context: str = "Clear", cargo_doc_text: str = None) -> dict:
     """
     Sends TWO container view images to Gemini Vision in a single multi-image
     API call for a unified structural inspection of one container.
 
     Image 1 = Left / Front panel view.
     Image 2 = Right / Rear panel view.
+    cargo_doc_text = Optional extracted text from a Bill of Lading / Manifest PDF.
 
     Returns structured JSON: ISO code, damage detections (each tagged with
     'view': 1 or 2) with normalized bounding boxes, severity, routing action,
@@ -390,6 +391,16 @@ def analyze_container_gemini_dual(img_bytes_1: bytes, img_bytes_2: bytes, weathe
             "- If neither image is a container: set overall_status to NOT_CONTAINER.\n"
             "Return ONLY the JSON, no markdown, no explanation."
         )
+        # Append cargo document context if provided
+        if cargo_doc_text:
+            prompt += (
+                "\n\nIMPORTANT: You are also provided with the official CARGO MANIFEST / BILL OF LADING for this container. "
+                "Cross-reference the visual state of the container with the declared contents. "
+                "For example, if the document says 'Hazardous Material Declaration: NONE' but you see hazmat placards in the image, flag it as suspicious. "
+                "If the document declares lightweight cargo but the container looks overloaded or deformed, mention it in your summary. "
+                "Include any discrepancies in your 'summary' field.\n\n"
+                f"[CARGO_DOCUMENT_START]\n{cargo_doc_text}\n[CARGO_DOCUMENT_END]"
+            )
         response = model.generate_content([prompt, img_pil_1, img_pil_2])
         text = response.text.strip()
         # Strip markdown fences if present
@@ -406,10 +417,11 @@ def analyze_container_gemini_dual(img_bytes_1: bytes, img_bytes_2: bytes, weathe
         return {"_gemini_success": False, "error": str(exc)}
 
 
-def analyze_container(img_bytes_1: bytes, img_bytes_2: bytes, weather_context: str = "Clear") -> dict:
+def analyze_container(img_bytes_1: bytes, img_bytes_2: bytes, weather_context: str = "Clear", cargo_doc_text: str = None) -> dict:
     """
     Main dual-view inference logic. Accepts TWO images of the same container
     (left/front + right/rear views) and returns a single unified analysis.
+    Optionally accepts extracted cargo document text for cross-referencing.
 
     Wraps the production edge architecture execution while ultimately defaulting
     to the cloud Gemini API for the hackathon live demo to guarantee stability.
@@ -428,7 +440,7 @@ def analyze_container(img_bytes_1: bytes, img_bytes_2: bytes, weather_context: s
     # we bypass the local edge-inference to avoid local dependency crashes
     # (e.g. ultralytics/paddleocr missing on judges' presentation machine)
     # and utilize Gemini Multimodal API for guaranteed accurate results.
-    return analyze_container_gemini_dual(img_bytes_1, img_bytes_2, weather_context)
+    return analyze_container_gemini_dual(img_bytes_1, img_bytes_2, weather_context, cargo_doc_text=cargo_doc_text)
 
 
 def annotate_with_ai_boxes(image: Image.Image, detections: list) -> Image.Image:
@@ -784,16 +796,41 @@ def page_gate_inspector():
             key="view2_uploader",
         )
 
+    # ── Optional Cargo Document Upload ──
+    with st.expander("📄 Attach Cargo Document — Bill of Lading / Manifest (Optional)", expanded=False):
+        st.markdown(
+            "Upload the official cargo manifest or Bill of Lading (PDF) for this container. "
+            "The AI will cross-reference the visual inspection against the declared cargo to detect discrepancies "
+            "(e.g., undeclared hazmat, weight mismatches, seal number verification)."
+        )
+        uploaded_cargo_doc = st.file_uploader(
+            "Upload Cargo Document (PDF)",
+            type=["pdf"],
+            help="Optional. The AI will cross-reference the document with the visual inspection.",
+            key="cargo_doc_uploader",
+        )
+
+    # Extract cargo doc text if uploaded
+    cargo_doc_text = None
+    if uploaded_cargo_doc is not None:
+        cargo_doc_text = extract_text_from_pdf(uploaded_cargo_doc.read())
+        if cargo_doc_text and not cargo_doc_text.startswith("[Error"):
+            st.success(f"📄 **Cargo Document Attached:** `{uploaded_cargo_doc.name}` — will be cross-referenced by AI.")
+        else:
+            st.warning("Could not extract text from the uploaded PDF. The AI will proceed with image-only analysis.")
+            cargo_doc_text = None
+
     # ── Both views required guard ──
     if uploaded_view1 is not None and uploaded_view2 is not None:
-        # Composite cache key using both files
-        cache_key = f"vision_ai_dual_{uploaded_view1.name}_{uploaded_view1.size}_{uploaded_view2.name}_{uploaded_view2.size}"
+        # Composite cache key using both files + doc
+        doc_key_part = f"_{uploaded_cargo_doc.name}_{uploaded_cargo_doc.size}" if uploaded_cargo_doc else ""
+        cache_key = f"vision_ai_dual_{uploaded_view1.name}_{uploaded_view1.size}_{uploaded_view2.name}_{uploaded_view2.size}{doc_key_part}"
         if cache_key not in st.session_state:
             img_bytes_1 = uploaded_view1.read()
             img_bytes_2 = uploaded_view2.read()
             current_weather = TERMINAL_WEATHER_CONDITIONS.get(terminal, "Clear")
             with st.spinner("⚙️  Running VisionGate Dual-View Edge AI inference on both views..."):
-                result = analyze_container(img_bytes_1, img_bytes_2, weather_context=current_weather)
+                result = analyze_container(img_bytes_1, img_bytes_2, weather_context=current_weather, cargo_doc_text=cargo_doc_text)
             st.session_state[cache_key] = (img_bytes_1, img_bytes_2, result)
 
             # --- Insert single DB record (1 container, not 2) ---
