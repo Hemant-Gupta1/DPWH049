@@ -60,6 +60,19 @@ def init_db() -> None:
         conn.execute("ALTER TABLE container_logs ADD COLUMN inspection_type TEXT NOT NULL DEFAULT 'structural'")
     except sqlite3.OperationalError:
         pass  # Column already exists
+
+    # Create Ship Delays table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS ship_delays (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp           TEXT    NOT NULL,
+            ship_name           TEXT    NOT NULL,
+            terminal            TEXT    NOT NULL,
+            driver_contact      TEXT    NOT NULL,
+            delay_minutes       INTEGER NOT NULL,
+            sms_sent            BOOLEAN NOT NULL
+        )
+    """)
     conn.commit()
     conn.close()
 
@@ -127,6 +140,46 @@ def fetch_all_logs() -> list[dict]:
     rows = conn.execute(
         "SELECT * FROM container_logs ORDER BY id DESC"
     ).fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+def insert_ship_delay(
+    ship_name: str,
+    terminal: str,
+    driver_contact: str,
+    delay_minutes: int,
+    sms_sent: bool,
+    timestamp: str | None = None,
+) -> int:
+    """Inserts a ship delay record."""
+    if timestamp is None:
+        timestamp = datetime.datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
+
+    conn = _get_connection()
+    cursor = conn.execute(
+        """
+        INSERT INTO ship_delays
+            (timestamp, ship_name, terminal, driver_contact, delay_minutes, sms_sent)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (timestamp, ship_name, terminal, driver_contact, delay_minutes, sms_sent),
+    )
+    row_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return row_id
+
+def fetch_delay_logs(terminal: str | None = None) -> list[dict]:
+    """Returns all ship_delay records, filtered by terminal optionally."""
+    conn = _get_connection()
+    if terminal:
+        rows = conn.execute(
+            "SELECT * FROM ship_delays WHERE terminal = ? ORDER BY id DESC", (terminal,)
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM ship_delays ORDER BY id DESC"
+        ).fetchall()
     conn.close()
     return [dict(row) for row in rows]
 
@@ -310,6 +363,46 @@ def get_thermal_stats(location: str | None = None) -> dict:
         "critical_thermal": critical,
         "normal_scans": total - anomalies,
         "anomaly_rate": anomaly_rate,
+    }
+
+def get_ship_delay_stats(terminal: str | None = None) -> dict:
+    """
+    Calculates advanced stats (Average, Median, P95, % Delayed) for ship delays.
+    """
+    conn = _get_connection()
+    if terminal:
+        rows = conn.execute("SELECT delay_minutes FROM ship_delays WHERE terminal = ?", (terminal,)).fetchall()
+    else:
+        rows = conn.execute("SELECT delay_minutes FROM ship_delays").fetchall()
+    conn.close()
+
+    delays = [r[0] for r in rows if r[0] > 0]
+    total_logged_ships = len(rows)
+
+    if not delays:
+        return {"avg": 0, "median": 0, "p95": 0, "percent_delayed": 0.0, "total": total_logged_ships}
+
+    import statistics
+    import math
+
+    # Calculate statistics
+    avg = sum(delays) / len(delays)
+    median = statistics.median(delays)
+
+    # Calculate P95
+    delays_sorted = sorted(delays)
+    p95_index = max(0, math.ceil(0.95 * len(delays_sorted)) - 1)
+    p95 = delays_sorted[p95_index]
+
+    # Percentage of delayed ships out of total logged ships in DB
+    percent_delayed = min((len(delays) / total_logged_ships) * 100, 100.0) if total_logged_ships > 0 else 0.0
+
+    return {
+        "avg": round(avg, 1),
+        "median": round(median, 1),
+        "p95": round(p95, 1),
+        "percent_delayed": round(percent_delayed, 1),
+        "total": total_logged_ships
     }
 
 

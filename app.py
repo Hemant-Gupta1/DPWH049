@@ -19,6 +19,9 @@ import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
 from dotenv import load_dotenv
 import PyPDF2
+import smtplib
+import ssl
+from email.message import EmailMessage
 
 import db_utils
 from fpdf import FPDF
@@ -289,6 +292,7 @@ with st.sidebar:
             "🔍 Gate Inspector (Vision AI)",
             "🌡️ Thermal Inspector",
             "🤖 Yard Copilot (AI Chat)",
+            "🚢 Ship Delay Manager",
             "📋 Compliance Reports",
         ],
     )
@@ -648,6 +652,17 @@ def page_dashboard():
         value=f"{db_stats['high_severity']} units",
         help="Critical structural damage or hazmat leaks halted before yard entry."
     )
+
+    st.markdown("---")
+    
+    # ── Ship Delay Metrics ──
+    delay_stats = db_utils.get_ship_delay_stats(terminal)
+    st.markdown("## 🚢 Ship Delay & Logistics Hub")
+    sd_col1, sd_col2, sd_col3, sd_col4 = st.columns(4)
+    sd_col1.metric("Average Delay", f"{delay_stats['avg']} mins", border=True)
+    sd_col2.metric("Median Delay", f"{delay_stats['median']} mins", border=True)
+    sd_col3.metric("P95 Delay", f"{delay_stats['p95']} mins", help="95th percentile worst-case delay", border=True)
+    sd_col4.metric("% Delayed Ships", f"{delay_stats['percent_delayed']}%", help=f"Out of {delay_stats['total']} total ships logged.", border=True)
 
     st.markdown("---")
 
@@ -1672,8 +1687,151 @@ def page_yard_copilot():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# PAGE 6 – SHIP DELAY MANAGER
+# ─────────────────────────────────────────────────────────────────────────────
+
+def send_email_alert(recipient_email: str, ship_name: str, delay_minutes: int, terminal: str) -> bool:
+    """Dispatches a real-time email using smtplib to the target truck driver."""
+    sender_email = os.getenv("SENDER_EMAIL")
+    app_password = os.getenv("EMAIL_APP_PASSWORD")
+    
+    if not sender_email or not app_password:
+        st.error("Email credentials not configured in `.env`.")
+        return False
+
+    msg = EmailMessage()
+    msg['Subject'] = f"URGENT: DP World Gate Traffic Alert - {ship_name} Delayed"
+    msg['From'] = sender_email
+    msg['To'] = recipient_email
+
+    content = f"""
+    Dear Driver,
+
+    This is an automated dispatch alert from the DP World VisionGate system at {terminal}.
+
+    Please be advised that the vessel '{ship_name}' has been officially delayed by {delay_minutes} minutes. 
+    Your assigned drop-off/pick-up gate clearance windows have been shifted accordingly. Please remain at your current staging area until receiving further clearance.
+
+    Safety first,
+    DP World CARGOES Terminal Intelligence
+    """
+    msg.set_content(content)
+
+    try:
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
+            server.login(sender_email, app_password)
+            server.send_message(msg)
+        return True
+    except Exception as e:
+        st.error(f"Failed to send dispatch email: {str(e)}")
+        return False
+
+def page_ship_delay_manager():
+    st.markdown("# 🚢 Ship Delay Manager")
+    st.markdown("Log inbound ship delays and trigger real-time Email notifications directly to awaiting trucks.")
+    st.markdown("---")
+
+    col1, col2 = st.columns([1, 1.5])
+    
+    with col1:
+        st.markdown("### 📝 Log Delay Form")
+        ship_name = st.selectbox("Select Target Vessel", ["MSC Megalodon", "Maersk Voyager", "Evergreen Apex", "CMA CGM Titan", "OOCL Horizon"])
+        driver_email = st.text_input("Truck Driver Email", value="", placeholder="e.g. driver@logistics.com")
+        delay_minutes = st.number_input("Delay Time (Minutes)", min_value=1, value=30, step=5)
+        
+        if st.button("Trigger Delay & Dispatch Email", use_container_width=True):
+            if not driver_email or "@" not in driver_email:
+                st.warning("Please provide a valid receiver email address.")
+            else:
+                with st.spinner(f"Routing Email to {driver_email}..."):
+                    success = send_email_alert(driver_email, ship_name, delay_minutes, terminal)
+                
+                # Insert into database (using driver_contact col for the email address)
+                db_utils.insert_ship_delay(ship_name=ship_name, terminal=terminal, driver_contact=driver_email, delay_minutes=delay_minutes, sms_sent=success)
+                
+                if success:
+                    st.toast(f"✅ Email securely dispatched to {driver_email}.", icon="✉️")
+                    st.success(f"**Action Recorded:** {ship_name} delayed by {delay_minutes} minutes. Alert sent.")
+                    st.balloons()
+            
+    with col2:
+        st.markdown("### 📡 Live Fleet Board")
+        logs = db_utils.fetch_delay_logs(terminal)
+        if logs:
+            import pandas as pd
+            df = pd.DataFrame(logs)[["timestamp", "ship_name", "delay_minutes", "sms_sent"]]
+            df.columns = ["Timestamp", "Vessel Name", "Delay (mins)", "Alert Sent (T/F)"]
+            st.dataframe(df, use_container_width=True, hide_index=True)
+        else:
+            st.info("No ship delays logged for this terminal yet. Log a delay to trigger email dispatch.")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # PAGE 4 – COMPLIANCE REPORTS
 # ─────────────────────────────────────────────────────────────────────────────
+
+def build_delay_audit_pdf_bytes(terminal: str) -> bytes:
+    """Generates an FPDF report for Ship Delays and returns bytes."""
+    class AuditPDF(FPDF):
+        def header(self):
+            self.set_font('Helvetica', 'B', 15)
+            self.cell(0, 10, 'DP World - Ship Delay & Logistics Audit', border=False, ln=1, align='C')
+            self.set_font('Helvetica', 'I', 10)
+            self.cell(0, 10, f'Terminal: {terminal}', border=False, ln=1, align='C')
+            self.ln(5)
+
+        def footer(self):
+            self.set_y(-15)
+            self.set_font('Helvetica', 'I', 8)
+            self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'C')
+
+    pdf = AuditPDF()
+    pdf.add_page()
+
+    # Meta
+    pdf.set_font('Helvetica', '', 11)
+    pdf.cell(0, 6, f"Generated: {datetime.datetime.now(IST).strftime('%Y-%m-%d %H:%M:%S')} (IST)", ln=1)
+    pdf.cell(0, 6, "Report Scope: Ship Departure/Arrival Delays & Truck Driver Notifications", ln=1)
+    pdf.ln(5)
+    
+    # Stats Summary
+    stats = db_utils.get_ship_delay_stats(terminal)
+    pdf.set_font('Helvetica', 'B', 12)
+    pdf.cell(0, 8, "Terminal Delay KPIs:", ln=1)
+    pdf.set_font('Helvetica', '', 11)
+    pdf.cell(0, 6, f"- Average Delay: {stats['avg']} mins", ln=1)
+    pdf.cell(0, 6, f"- Median Delay: {stats['median']} mins", ln=1)
+    pdf.cell(0, 6, f"- P95 Worst-case: {stats['p95']} mins", ln=1)
+    pdf.cell(0, 6, f"- % of Ships Delayed: {stats['percent_delayed']}%", ln=1)
+    pdf.ln(5)
+
+    logs = db_utils.fetch_delay_logs(terminal)
+    if logs:
+        pdf.set_font('Helvetica', 'B', 10)
+        # Headers: Date, Ship, Delay, SMS Sent
+        pdf.cell(40, 8, 'Timestamp (IST)', border=1)
+        pdf.cell(50, 8, 'Vessel Name', border=1)
+        pdf.cell(30, 8, 'Delay (Mins)', border=1)
+        pdf.cell(40, 8, 'Email Confirmed', border=1, ln=1)
+
+        pdf.set_font('Helvetica', '', 9)
+        for r in logs:
+            dt_str = r['timestamp'].split(' ')[0]
+            ship = str(r['ship_name'])
+            delay = str(r['delay_minutes'])
+            sms = "YES" if r['sms_sent'] else "NO"
+
+            pdf.cell(40, 8, dt_str, border=1)
+            pdf.cell(50, 8, ship, border=1)
+            pdf.cell(30, 8, delay, border=1)
+            pdf.cell(40, 8, sms, border=1, ln=1)
+    else:
+        pdf.set_font('Helvetica', 'I', 11)
+        pdf.cell(0, 10, "No delays logged for this terminal.", ln=1)
+
+    return bytes(pdf.output(dest='S'))
+
 
 def page_compliance_reports():
     st.markdown("# 📋 Compliance Reports & Audit Centre")
@@ -1717,7 +1875,20 @@ def page_compliance_reports():
             file_name=f"VisionGate_Audit_{terminal[:3].upper()}_{datetime.datetime.now(IST).strftime('%Y%m%d_%H%M')}.pdf",
             mime="application/pdf",
             help="Cryptographically signed PDF audit report.",
+            use_container_width=True
         )
+
+        st.markdown(" ")
+
+        report2_bytes = build_delay_audit_pdf_bytes(terminal)
+        st.download_button(
+            label="📥 Download Ship Delay Analysis (Report 2)",
+            data=report2_bytes,
+            file_name=f"DP_World_Delay_Audit_{datetime.datetime.now(IST).strftime('%Y%m%d')}.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
+
 
         st.markdown(
             '<div class="custom-success" style="margin-top:10px;">'
@@ -1804,6 +1975,8 @@ def main():
         page_thermal_inspector()
     elif page == "🤖 Yard Copilot (AI Chat)":
         page_yard_copilot()
+    elif page == "🚢 Ship Delay Manager":
+        page_ship_delay_manager()
     elif page == "📋 Compliance Reports":
         page_compliance_reports()
 

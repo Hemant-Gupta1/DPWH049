@@ -57,6 +57,7 @@ Truck Arrives → Dual-Camera Capture (Left + Right Views) → Edge AI / Gemini 
 - **Switching Between DP World Global Terminals:** Instantly toggle terminal operations context.
 - **Multi-Language Interface Support:** Extensible localization (English, Arabic, Hindi) bridging global operators.
 - **Our World, Our Future - Impact Tracker:** Real-time throughput charting and Scope 3 Net Zero 2050 tracking.
+- **🚢 Ship Delay & Logistics Hub:** Allows operators to log vessel delays and directly trigger live SMTP email communications with grounded truck drivers.
 - **Premium UI/UX Design Engine:** Custom glassmorphism interfaces, smooth sidebar transitions, interactive hover components, and dynamic glowing text overlays tailored to give a responsive, futuristic terminal feel.
 - **Dual-View Container Inspection:** Two side-angle images (left/front + right/rear) analysed together in a single unified AI pass for comprehensive 360° damage detection and ISO code parsing.
 - **⛈️ Weather-Contextual Vulnerability Assessment:** AI cross-references container damage against live terminal weather forecasts to prevent cargo loss (e.g., predicting water ingress due to a rust hole during monsoon warnings).
@@ -191,8 +192,13 @@ Truck → Gate Cameras (4x) → NVIDIA Jetson Orin (Edge Node)
 
 ### Page 4 — Compliance Reports
 - **Download Gate Audit Report (PDF)**: Generates a professional, legally-defensible "DP World Official Gate Audit" PDF document, uniquely branded for the DP World Innovation Hackathon using `fpdf2` directly from the SQLite database.
+- **Download Ship Delay Audit (Report 2)**: Exports a log of port traffic hold-ups alongside aggregated KPI math.
 - **Live Audit Log**: Renders a live Pandas dataframe fetched straight from the edge database.
 - **Regulatory framework**: ISO 6346, SOLAS VII, IMO FAL, IMDG compliance cards.
+
+### Page 6 — Ship Delay Manager
+- **Actionable Logistics Control**: Allows terminal operators to explicitly assign hold-up states to flagged vessels.
+- **Automated Alerts Delivery (Live Email)**: Fully integrated Python `smtplib` dispatch engine that dynamically pulls from the `.env` configuration file to blast real-time delay warnings to physical inbox domains directly from the Streamlit UI.
 
 ---
 
@@ -424,6 +430,19 @@ The rich Gemini Vision severity labels are simplified for database storage and d
 | **AI Integration** | Weather injected into Gemini system prompt alongside container images. |
 | **Output JSON Keys** | `weather_vulnerability`, `weather_routing_action` |
 | **Action** | If Gemini detects damage overlapping with weather risks (e.g., hole + rain = water ingress), an explicit warning is displayed on the UI. |
+
+---
+
+### 🚢 Page 6 — Ship Delay Manager Metrics
+
+#### 18. Logistics Fleet Math
+
+| Metric | Formula / Logic |
+|---|---|
+| **Ship Delay DB Storage** | Isolated `ship_delays` Table strictly segregated from container audits. |
+| **Median Delay** | Custom python implementation evaluating standard middle-value aggregation (`statistics.median([logs])`). Superior for smoothing massive traffic extremes versus pure Average. |
+| **P95 Worst-case Delay** | `math.ceil(0.95 * len(sorted_delays)) - 1`. Extracts the 95th percentile, isolating the most severe 5% bottlenecks to satisfy top-level DP World fleet managers. |
+| **% Delayed Ships** | `(delayed_count / total_ships_logged) * 100`. Demonstrating the pure percentage of impacted ships interacting with the system. |
 
 ---
 
