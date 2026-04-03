@@ -467,67 +467,70 @@ def page_dashboard():
     )
     st.markdown("---")
 
-    # ── KPI Row 1 ──
-    st.markdown("## ⚡ Real-Time Gate Performance Metrics")
+    # Fetch DB Stats for all dashboard KPIs
+    db_stats = db_utils.get_summary_stats(location=terminal)
+    
+    st.markdown("## 🔴 Real-Time Gate Performance Metrics (Live Data)")
     st.markdown(
-        '<div class="custom-info">ℹ️  VisionGate AI replaces a 5-minute manual inspection with a '
-        '<b>sub-15-second autonomous pipeline</b> — cameras → Edge AI → TOS — with zero human bottleneck. '
-        'Scalable across all DP World terminals via containerised microservices (Kubernetes + Kafka).</div>',
+        '<div class="custom-info">ℹ️  VisionGate AI replaces a 5-minute manual inspection with an '
+        '<b>autonomous pipeline</b> — scaling across DP World terminals to eradicate queue bottlenecks and save manpower. '
+        '<i>All metrics below are generated live from the AI inference database.</i></div>',
         unsafe_allow_html=True,
     )
 
+    # ── KPI Row 1: Throughput and Efficiency ──
+    st.markdown("### ⚡ Throughput & Efficiency")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric(
         label="⏱️ Current Gate Queue Time",
-        value="14 sec",
-        delta="-4 min 46 sec vs Industry Avg",
-        delta_color="normal",
-        help="Industry average is ~5 minutes for manual inspection. VisionGate reduces this by 95%.",
+        value=f"{db_stats['current_gate_queue_seconds']:.1f} sec",
+        delta="-4m 46s vs Manual Avg",
+        help="Simulated live. Baseline is 14s. Increases slightly with high-severity damage checks."
     )
     c2.metric(
-        label="🚛 Truck Idling Hours Saved (Monthly)",
-        value="1,240 hrs",
-        delta="+18% MoM",
-        help="Fewer idle trucks = less fuel burn = lower Scope 3 emissions.",
+        label="👥 Manpower Labor Saved",
+        value=f"{db_stats['fte_saved']} FTEs",
+        delta=f"+{db_stats['manpower_hours_saved']} Hrs",
+        help="Calculated as 5 minutes of clerk time saved per container processed."
     )
     c3.metric(
-        label="🌱 Scope 3 CO₂ Prevented (Monthly)",
-        value="45.2 Tons",
-        delta="+12% MoM",
-        help="Aligned with DP World's 'Our World, Our Future' sustainability strategy.",
+        label="📦 Processed via AI",
+        value=f"{db_stats['total_processed']} units",
+        help="Total scanned containers saved to SQLite."
     )
     c4.metric(
-        label="☣️ Hazardous Leaks Prevented",
-        value="12 containers",
-        delta="+3 this week",
-        help="AI-identified hazmat breaches before entry into the terminal.",
+        label="✅ Cleared for Loading",
+        value=f"{db_stats['cleared']} units",
     )
 
     st.markdown("---")
 
-    # ── KPI Row 2 (Dynamic Database Live Metrics) ──
-    st.markdown("## 🔴 Live Database Metrics (AI-Processed)")
-    db_stats = db_utils.get_summary_stats(location=terminal)
-    
+    # ── KPI Row 2: ESG & Safety ──
+    st.markdown("### 🌿 ESG & Safety Impact")
     dc1, dc2, dc3, dc4 = st.columns(4)
     dc1.metric(
-        label="📦 Processed via App",
-        value=f"{db_stats['total_processed']} containers",
-        help="Actual containers processed by the Gate AI module and saved to SQLite."
-    )
-    dc2.metric(
-        label="✅ Cleared for Loading",
-        value=db_stats['cleared']
-    )
-    dc3.metric(
-        label="⏱️ Real Idling Saved",
+        label="🚛 Truck Idling Saved",
         value=f"{db_stats['idling_hours_saved']} hrs",
         help="Calculated as 5 mins saved per scanned container."
     )
-    dc4.metric(
-        label="🌱 Real CO₂ Prevented",
+    dc2.metric(
+        label="🌱 CO₂ Prevented",
         value=f"{db_stats['co2_tons_saved']} Tons",
         help="Calculated as 10 kg CO₂ per idling hour saved."
+    )
+    
+    # Calculate Trees Equivalent here for the top grid
+    trees_eq_top = int(db_stats['co2_tons_saved'] * 55)
+    
+    dc3.metric(
+        label="🌲 Trees Equivalent",
+        value=f"~{trees_eq_top} Trees",
+        help="Calculated as ~55 mature trees absorbing 1 Ton of CO₂. Based on the EPA's carbon sequestration assumptions."
+    )
+    dc4.metric(
+        label="☣️ High-Severity Stops",
+        value=f"{db_stats['high_severity']} units",
+        help="Critical structural damage or hazmat leaks halted before yard entry."
     )
 
     st.markdown("---")
@@ -549,76 +552,33 @@ def page_dashboard():
         '<div style="font-size:1.1rem; font-weight:700; color:#00A5B5;">🌍 Scope 3 Emissions Reduced</div>'
         '<div style="font-size:.88rem; color:#8b949e; margin:4px 0;">Aligned with DP World Net Zero 2050</div>'
         '<div style="font-size:1.6rem; font-weight:800; color:#3fb950; margin:6px 0;">'
-        f'{db_stats["co2_tons_saved"]} Tons CO₂ <span style="font-size:.9rem; color:#8b949e;">(via this app)</span> '
-        f'| {_stats["co2"]} Tons <span style="font-size:.9rem; color:#8b949e;">(terminal monthly)</span></div>'
+        f'{db_stats["co2_tons_saved"]} Tons CO₂ <span style="font-size:.9rem; color:#8b949e;">(via this app)</span></div>'
         '<div style="font-size:.78rem; color:#8b949e;">Target: Net Zero by 2050 • Interim: 28% reduction by 2030</div>'
         '</div>',
         unsafe_allow_html=True,
     )
 
-    col_a, col_b, col_c = st.columns(3)
-
-    with col_a:
-        st.markdown("### 🌍 Carbon Footprint Reduction")
-        st.progress(78, text="78% of quarterly CO₂ target achieved")
-        st.markdown("""
-        | Metric | Value |
-        |---|---|
-        | Monthly CO₂ Prevented | **45.2 Tons** |
-        | Annual Projection | **542 Tons** |
-        | Trees Equivalent | **~2,500 trees** |
-        | Scope 3 Category | Upstream transport |
-        """)
-
-    with col_b:
-        st.markdown("### 🔒 Safety & Compliance")
-        st.progress(94, text="94% automated compliance rate")
-        st.markdown("""
-        | Metric | Value |
-        |---|---|
-        | Hazmat Detections | **12 prevented** |
-        | ISO Validation Rate | **99.7%** |
-        | Manual Error Rate | **0%** (was 3–5%) |
-        | SOLAS Compliance | **100%** |
-        """)
-
-    with col_c:
-        st.markdown("### 📈 Operational Efficiency")
-        st.progress(95, text="95% gate time reduction achieved")
-        st.markdown("""
-        | Metric | Value |
-        |---|---|
-        | Gate Avg Time | **14 sec** |
-        | Throughput Increase | **+340%** |
-        | Labor Redeployed | **8 FTEs → value work** |
-        | TOS Sync Latency | **< 200 ms** |
-        """)
-
-    st.markdown("---")
-
-    # ── Terminal Throughput Chart (simulated with ASCII-style table) ──
+    # ── Terminal Throughput Chart (100% Live DB Logic) ──
     st.markdown("## 📊 Hourly Gate Throughput — Last 24 Hours")
     st.markdown(
-        '<div class="custom-info">ℹ️  Data is streamed from VisionGate Edge Nodes into a central '
-        'Kafka cluster and visualised in near-real-time. Each terminal node operates independently '
-        '(offline-capable) and syncs on reconnect — enabling resilient multi-geography deployments.</div>',
+        '<div class="custom-info">ℹ️  This chart natively renders 100% live SQLite hourly groupings. '
+        'Because this is a Hackathon environment, you will only see spikes on the exact hour you actively upload tests '
+        'to the Gate Inspector.</div>',
         unsafe_allow_html=True,
     )
 
     import pandas as pd
-    import random
-    random.seed(42)
-    hours = [f"{h:02d}:00" for h in range(24)]
-    throughput_data = pd.DataFrame({
-        "Hour": hours,
-        "Containers Processed": [random.randint(55, 120) for _ in hours],
-        "CO₂ Saved (kg)": [random.randint(80, 200) for _ in hours],
-    })
-    throughput_data = throughput_data.set_index("Hour")
-    st.bar_chart(throughput_data["Containers Processed"], use_container_width=True)
-
-    with st.expander("📊 View Full 24-Hour Data Table"):
-        st.dataframe(throughput_data, use_container_width=True)
+    
+    raw_hourly_data = db_utils.get_hourly_throughput()
+    
+    if len(raw_hourly_data) > 0:
+        throughput_data = pd.DataFrame({
+            "Hour": list(raw_hourly_data.keys()),
+            "Containers Processed": list(raw_hourly_data.values()),
+        }).set_index("Hour")
+        st.bar_chart(throughput_data["Containers Processed"], use_container_width=True)
+    else:
+        st.warning("No containers processed in the last 24 hours. Upload an image in the Gate Inspector to generate live analytics.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

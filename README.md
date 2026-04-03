@@ -150,7 +150,13 @@ Truck → Gate Cameras (4x) → NVIDIA Jetson Orin (Edge Node)
 ## 🔧 Feature Breakdown
 
 ### Page 1 — Our World, Our Future - Impact Tracker
-- **Dynamic Database Metrics**: Real-time DB lookup for total containers processed, real idling saved, and true Scope 3 CO₂ prevented (Aligned with DP World Net Zero 2050).
+- **Unified Live Data Dashboard**: A single, beautifully crafted grid replacing static mocks with active database telemetry.
+- **Dynamic Database Metrics**: Real-time DB lookup for total containers processed, High-Severity stops, and dynamically calculated efficiency metrics.
+- **Mathematical Assumptions Explained**:
+  - **Manpower Labor Saved**: Assumes 1 manual inspection = 5 minutes. Total hours saved = `processed_containers * (5 / 60)`. FTEs saved = `Hours Saved / 8`.
+  - **Gate Queue Time**: Base queue is assumed sub-15s (`14.0s`). To simulate live fluctuating wait times, the system adds a nominal `0.5s` penalty per *current day high-severity container* requiring isolation routing.
+  - **Truck Idling/CO₂ Prevented**: 5 minutes saved per container. Total idling hours = `processed_containers * (5 / 60)`. Scope 3 CO₂ impact assumes `10 kg CO₂` burned per idling hour.
+  - **Trees Equivalent**: Derived natively from CO₂ Tons Prevented, assuming the EPA average of `~55 mature trees absorbing 1 Ton of CO₂`.
 - **ESG Gauges**: Progress bars for carbon, safety, and efficiency targets.
 - **Hourly throughput chart**: 24-hour bar chart with pandas + Streamlit charting.
 
@@ -203,6 +209,33 @@ Truck → Gate Cameras (4x) → NVIDIA Jetson Orin (Edge Node)
 
 ---
 
+## 🚀 The REAL ML Stack (Path to Production)
+
+**🎙️ Hackathon Pitch / What to say to the judges:**
+*"For this 24-hour prototype, we used the Gemini API to simulate the end-to-end vision pipeline. However, for real-world production at a DP World terminal, we propose a decoupled Edge AI architecture. We cannot rely on cloud latency for physical gate operations. In production, the heavy lifting of Computer Vision happens locally on edge servers at the gate using YOLOv8 for real-time damage detection and PaddleOCR for ISO code extraction. The LLM is only used at the end of the pipeline to translate the structured data into human-readable routing actions for the Yard Copilot."*
+
+If the technical judges ask for specifics on how we scale this architecture across terminals, our production ML pipeline breaks down into 3 decoupled layers:
+
+### Step 1: The Vision Layer (Runs on the Edge/Gate Camera)
+- **The Model:** YOLOv10 or YOLOv8 (You Only Look Once).
+- **Why?** YOLO is extremely lightweight. It can process 30-60 frames per second locally on a standard NVIDIA GPU at the physical gate, operating natively offline.
+- **How it works:** We fine-tune YOLO on a heavily curated dataset (e.g., Roboflow) to draw tight "Bounding Boxes" around specific structural classes: Damage (`Rust`, `Dent`, `Tear`) and `Text_Region`.
+- **Panel Detection:** We don't rely on AI to determine the container's physical side. We hard-map the fixed camera angles (e.g., Camera 1 = Left side, Camera 2 = Right side). If YOLO detects rust on Camera 1's feed, standard Python logic tags the payload as "Left Panel Damage."
+
+### Step 2: The OCR Layer (Runs on the Edge)
+- **The Model:** PaddleOCR (by Baidu).
+- **Why?** It is the industry gold standard for extracting text "in the wild" (handling weird oblique angles, heavily dirtied containers, and poor nighttime port lighting).
+- **How it works:** Once YOLO outputs a fast bounding box strictly targeting the container's `Text_Region`, that small cropped image tensor is fed immediately to PaddleOCR, which extracts the "MSKU 123456 7" ISO code in bare milliseconds.
+
+### Step 3: The Reasoning/Routing Layer (Runs in the Cloud/TOS)
+- **The Model:** A smaller, cost-effective LLM (like Llama-3, Mistral, or a fine-tuned GPT-3.5) OR a strict deterministic Rules-Based Engine.
+- **How it works:** The Edge server packages the raw YOLO and OCR matrices into a tiny, ultra-lightweight JSON payload:
+  ```json
+  {"iso": "MSKU1234567", "damage": ["severe_rust_left_panel", "dent_door"]}
+  ```
+- This tiny JSON payload (mere bytes, rather than megabytes of raw images) is streamed efficiently via Kafka to the central CARGOES TOS. Here, the AI reads the JSON string and generates the final "AI Assessment Summary" and executes the "Routing Action" (e.g., *Reroute to JAFZA*) that the user sees generated in the Copilot Chat interface.
+
+---
 ## 📦 Installation & Setup
 
 ### Prerequisites
