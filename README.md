@@ -658,9 +658,7 @@ Dual-View Container Image Upload (2 images = 1 container)
 ## 🚀 The REAL ML Stack (Path to Production)
 
 **🎙️ Hackathon Pitch / What to say to the judges:**
-*"For this 24-hour prototype, we used the Gemini API to simulate the end-to-end vision pipeline. However, for real-world production at a DP World terminal, we propose a decoupled Edge AI architecture. We cannot rely on cloud latency for physical gate operations. In production, the heavy lifting of Computer Vision happens locally on edge servers at the gate using YOLOv8 for real-time damage detection and PaddleOCR for ISO code extraction. The LLM is only used at the end of the pipeline to translate the structured data into human-readable routing actions for the Yard Copilot."*
-
-If the technical judges ask for specifics on how we scale this architecture across terminals, our production ML pipeline breaks down into 3 decoupled layers:
+We used the Gemini API to simulate the end-to-end vision pipeline. However, for real-world production at a DP World terminal, we propose a decoupled Edge AI architecture. We cannot rely on cloud latency for physical gate operations. In production, the heavy lifting of Computer Vision happens locally on edge servers at the gate using YOLOv8 for real-time damage detection and PaddleOCR for ISO code extraction. The LLM is only used at the end of the pipeline to translate the structured data into human-readable routing actions for the Yard Copilot."
 
 ### Step 1: The Vision Layer (Runs on the Edge/Gate Camera)
 - **The Model:** YOLOv10 or YOLOv8 (You Only Look Once).
@@ -981,7 +979,7 @@ VisionGate AI directly supports **DP World's "Our World, Our Future"** ESG strat
 
 ---
 
-## 🔭 Future Roadmap
+<!-- ## 🔭 Future Roadmap
 
 | Phase | Feature |
 |---|---|
@@ -992,7 +990,7 @@ VisionGate AI directly supports **DP World's "Our World, Our Future"** ESG strat
 | **Phase 5** | Live CARGOES TOS REST API integration |
 | **Phase 6** | Kafka streaming + Kubernetes deployment |
 | **Phase 7** | Blockchain audit log (Hyperledger Fabric) |
-| **Phase 8** | Multi-terminal rollout across DP World ports |
+| **Phase 8** | Multi-terminal rollout across DP World ports | -->
 
 ---
 
