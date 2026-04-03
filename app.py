@@ -46,60 +46,86 @@ st.set_page_config(
 # ─────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-/* ---------- Base ---------- */
+/* ---------- Base & Animations ---------- */
+@keyframes neonPulse {
+    0%, 100% { box-shadow: 0 0 10px rgba(0, 165, 181, 0.2); }
+    50% { box-shadow: 0 0 25px rgba(0, 165, 181, 0.6); }
+}
+
 [data-testid="stAppViewContainer"] {
-    background: linear-gradient(135deg, #0d1117 0%, #0f2027 50%, #1a1a2e 100%);
+    background: linear-gradient(135deg, #1c1c1c 0%, #161616 50%, #101010 100%);
     color: #e6edf3;
+    font-family: 'Inter', sans-serif;
 }
 [data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #0d1b2a 0%, #1b263b 100%);
-    border-right: 1px solid #30363d;
+    background: linear-gradient(180deg, #181818 0%, #111111 100%);
+    border-right: 1px solid rgba(48, 54, 61, 0.5);
+    box-shadow: 5px 0 25px rgba(0,0,0,0.5);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 [data-testid="stSidebar"] * { color: #c9d1d9 !important; }
-
-/* ---------- Metric cards ---------- */
-[data-testid="metric-container"] {
-    background: linear-gradient(135deg, #161b22, #21262d);
-    border: 1px solid #30363d;
-    border-radius: 14px;
-    padding: 18px 22px;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
-    transition: transform .2s;
+[data-testid="stSidebar"]:hover {
+    border-right: 1px solid #0057A8;
+    box-shadow: 5px 0 30px rgba(0, 87, 168, 0.15);
 }
-[data-testid="metric-container"]:hover { transform: translateY(-3px); }
 
-/* ---------- Headings (DP World Deep Blue) ---------- */
-h1 { color: #0057A8 !important; letter-spacing: -0.5px; text-shadow: 0 0 20px rgba(0,87,168,0.3); }
-h2 { color: #00A5B5 !important; }
-h3 { color: #a5d6ff !important; }
+/* ---------- Metric Cards (Glassmorphism & Glow) ---------- */
+[data-testid="metric-container"] {
+    background: rgba(22, 27, 34, 0.6);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(48, 54, 61, 0.7);
+    border-radius: 16px;
+    padding: 20px 24px;
+    box-shadow: 0 4px 30px rgba(0,0,0,0.5);
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+[data-testid="metric-container"]:hover { 
+    transform: translateY(-6px) scale(1.02); 
+    border-color: #00A5B5;
+    box-shadow: 0 10px 30px rgba(0, 165, 181, 0.3), inset 0 0 15px rgba(0, 165, 181, 0.1);
+}
 
-/* ---------- Buttons ---------- */
+/* ---------- Glowing Headings ---------- */
+h1 { 
+    color: #e6edf3 !important; 
+    font-weight: 800;
+    letter-spacing: -0.5px; 
+    text-shadow: 0 0 15px rgba(0, 87, 168, 0.8), 0 0 30px rgba(0, 87, 168, 0.4); 
+}
+h2 { 
+    color: #00A5B5 !important; 
+    text-shadow: 0 0 10px rgba(0, 165, 181, 0.5);
+}
+h3 { 
+    color: #a5d6ff !important; 
+    text-shadow: 0 0 8px rgba(165, 214, 255, 0.3);
+}
+
+/* ---------- Buttons (Neon Hover) ---------- */
 .stButton > button {
     background: linear-gradient(135deg, #0057A8, #00A5B5);
     color: white;
-    border: none;
-    border-radius: 8px;
+    border: 1px solid transparent;
+    border-radius: 10px;
     font-weight: 600;
-    padding: 10px 22px;
-    transition: all .2s;
+    padding: 12px 24px;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
 }
 .stButton > button:hover {
     background: linear-gradient(135deg, #00A5B5, #E5007D);
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0,87,168,.4);
-}
-.stDownloadButton > button {
-    background: linear-gradient(135deg, #00A5B5, #2ea043);
-    color: white;
-    border: none;
-    border-radius: 8px;
-    font-weight: 600;
+    transform: translateY(-3px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 10px 25px rgba(0, 165, 181, 0.6), 0 0 20px rgba(229, 0, 125, 0.4);
+    color: white !important;
 }
 
 /* ---------- DP World CARGOES Live Sync Chip ---------- */
 .cargoes-chip {
     display: inline-block;
-    background: linear-gradient(135deg, #0d4429, #0a3520);
+    background: rgba(13, 68, 41, 0.8);
+    backdrop-filter: blur(5px);
     border: 1px solid #00A5B5;
     border-radius: 24px;
     padding: 6px 18px;
@@ -110,65 +136,106 @@ h3 { color: #a5d6ff !important; }
     margin: 10px 0;
 }
 @keyframes cargoes-pulse {
-    0%, 100% { box-shadow: 0 0 8px rgba(0,165,181,0.3); }
-    50% { box-shadow: 0 0 18px rgba(0,165,181,0.7); }
+    0%, 100% { box-shadow: 0 0 10px rgba(0,165,181,0.4), inset 0 0 5px rgba(0,165,181,0.2); }
+    50% { box-shadow: 0 0 25px rgba(0,165,181,0.8), inset 0 0 10px rgba(0,165,181,0.5); }
 }
 
-/* ---------- Upload box ---------- */
+/* ---------- File Uploader (Animated Border) ---------- */
 [data-testid="stFileUploader"] {
-    background: #161b22;
-    border: 2px dashed #388bfd;
-    border-radius: 12px;
-    padding: 10px;
+    background: rgba(22, 27, 34, 0.5);
+    backdrop-filter: blur(10px);
+    border: 2px dashed #00A5B5;
+    border-radius: 16px;
+    padding: 20px;
+    transition: all 0.3s ease;
+}
+[data-testid="stFileUploader"]:hover {
+    border-color: #E5007D;
+    background: rgba(22, 27, 34, 0.8);
+    box-shadow: 0 0 20px rgba(229, 0, 125, 0.2);
+    transform: scale(1.01);
 }
 
-/* ---------- Chat ---------- */
+/* ---------- Chat Messages (Glassmorphism) ---------- */
 [data-testid="stChatMessage"] {
-    border-radius: 12px;
-    margin-bottom: 8px;
+    background: rgba(22, 27, 34, 0.6);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(48, 54, 61, 0.5);
+    border-radius: 16px;
+    margin-bottom: 12px;
+    padding: 10px;
+    transition: all 0.3s ease;
+}
+[data-testid="stChatMessage"]:hover {
+    box-shadow: 0 4px 15px rgba(0, 165, 181, 0.1);
+    transform: translateX(4px);
+    border-color: rgba(0, 165, 181, 0.3);
+}
+
+/* ---------- Expander ---------- */
+.streamlit-expanderHeader {
+    background: rgba(33, 38, 45, 0.6) !important;
+    border-radius: 8px !important;
+    transition: all 0.3s !important;
+}
+.streamlit-expanderHeader:hover {
+    background: rgba(0, 165, 181, 0.15) !important;
+    box-shadow: 0 0 10px rgba(0,165,181,0.2) !important;
 }
 
 /* ---------- Divider ---------- */
-hr { border-color: #30363d; }
+hr { border-color: rgba(48, 54, 61, 0.6); }
 
-/* ---------- Info / warning banners ---------- */
+/* ---------- Custom Alert Banners (Glowing borders) ---------- */
+.custom-info, .custom-success, .custom-warning, .custom-danger {
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-radius: 12px;
+    padding: 14px 20px;
+    margin: 12px 0;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+}
+.custom-info:hover, .custom-success:hover, .custom-warning:hover, .custom-danger:hover {
+    transform: translateY(-2px);
+}
 .custom-info {
-    background: linear-gradient(135deg,#1f3a5f,#162032);
+    background: linear-gradient(135deg, rgba(31,58,95,0.7), rgba(22,32,50,0.8));
     border-left: 4px solid #388bfd;
-    border-radius: 8px;
-    padding: 12px 18px;
-    margin: 10px 0;
-    font-size: .92rem;
 }
+.custom-info:hover { box-shadow: 0 0 20px rgba(56, 139, 253, 0.3); border-color: #58a6ff; }
+
 .custom-success {
-    background: linear-gradient(135deg,#14311a,#0d261a);
+    background: linear-gradient(135deg, rgba(20,49,26,0.7), rgba(13,38,26,0.8));
     border-left: 4px solid #2ea043;
-    border-radius: 8px;
-    padding: 12px 18px;
-    margin: 10px 0;
 }
+.custom-success:hover { box-shadow: 0 0 20px rgba(46, 160, 67, 0.3); border-color: #3fb950; }
+
 .custom-warning {
-    background: linear-gradient(135deg,#3d2005,#2d1b00);
+    background: linear-gradient(135deg, rgba(61,32,5,0.7), rgba(45,27,0,0.8));
     border-left: 4px solid #d29922;
-    border-radius: 8px;
-    padding: 12px 18px;
-    margin: 10px 0;
 }
+.custom-warning:hover { box-shadow: 0 0 20px rgba(210, 153, 34, 0.3); border-color: #e3b341; }
+
 .custom-danger {
-    background: linear-gradient(135deg,#3d0a0a,#2d0d0d);
+    background: linear-gradient(135deg, rgba(61,10,10,0.7), rgba(45,13,13,0.8));
     border-left: 4px solid #f85149;
-    border-radius: 8px;
-    padding: 12px 18px;
-    margin: 10px 0;
 }
+.custom-danger:hover { box-shadow: 0 0 20px rgba(248, 81, 73, 0.3); border-color: #ff7b72; }
+
+/* ---------- Glowing Badges ---------- */
 .badge {
-    display:inline-block; padding:3px 10px; border-radius:20px;
-    font-size:.78rem; font-weight:700; margin-right:5px;
+    display:inline-block; padding:4px 12px; border-radius:20px;
+    font-size:.8rem; font-weight:700; margin-right:6px;
+    transition: all 0.3s;
 }
-.badge-green  { background:#0d4429; color:#3fb950; border:1px solid #238636; }
-.badge-red    { background:#3d0a0a; color:#f85149; border:1px solid #da3633; }
-.badge-blue   { background:#0c2d6b; color:#58a6ff; border:1px solid #1f6feb; }
-.badge-yellow { background:#2e1f00; color:#e3b341; border:1px solid #9e6a03; }
+.badge:hover {
+    transform: scale(1.05);
+}
+.badge-green  { background:rgba(13, 68, 41, 0.6); color:#3fb950; border:1px solid #238636; box-shadow: 0 0 10px rgba(35, 134, 54, 0.2); }
+.badge-red    { background:rgba(61, 10, 10, 0.6); color:#f85149; border:1px solid #da3633; box-shadow: 0 0 10px rgba(218, 54, 51, 0.2); }
+.badge-blue   { background:rgba(12, 45, 107, 0.6); color:#58a6ff; border:1px solid #1f6feb; box-shadow: 0 0 10px rgba(31, 111, 235, 0.2); }
+.badge-yellow { background:rgba(46, 31, 0, 0.6); color:#e3b341; border:1px solid #9e6a03; box-shadow: 0 0 10px rgba(158, 106, 3, 0.2); }
 </style>
 """, unsafe_allow_html=True)
 

@@ -57,6 +57,7 @@ Truck Arrives → Dual-Camera Capture (Left + Right Views) → Edge AI / Gemini 
 - **Switching Between DP World Global Terminals:** Instantly toggle terminal operations context.
 - **Multi-Language Interface Support:** Extensible localization (English, Arabic, Hindi) bridging global operators.
 - **Our World, Our Future - Impact Tracker:** Real-time throughput charting and Scope 3 Net Zero 2050 tracking.
+- **Premium UI/UX Design Engine:** Custom glassmorphism interfaces, smooth sidebar transitions, interactive hover components, and dynamic glowing text overlays tailored to give a responsive, futuristic terminal feel.
 - **Dual-View Container Inspection:** Two side-angle images (left/front + right/rear) analysed together in a single unified AI pass for comprehensive 360° damage detection and ISO code parsing.
 - **⛈️ Weather-Contextual Vulnerability Assessment:** AI cross-references container damage against live terminal weather forecasts to prevent cargo loss (e.g., predicting water ingress due to a rust hole during monsoon warnings).
 - **🌡️ Thermal / Infrared Inspection:** Dedicated thermal imaging page for detecting hidden heat anomalies — reefer failures, insulation breaches, overheating cargo, and hazmat heat signatures — with completely separate metrics from structural inspection.
@@ -945,6 +946,11 @@ Use the **left sidebar** to:
   Forwarder    Dashboard  Resolution
   (EDI 315)   (ESG KPIs) (Legal Evidence)
 ```
+
+- **Streamlit**: Selected for extremely rapid prototyping. Enables building complex interactive dashboards and multi-page layouts in Python within 24 hours.
+- **Advanced Custom CSS**: Extended beyond native Streamlit capabilities via `unsafe_allow_html`. Features fully custom animations (`@keyframes`), glassmorphism panels, interactive hover effects (up to translateY(-6px) translations), glowing drop-shadows on components, and neon pulsing alerts.
+- **Pandas**: Used for all time-series aggregation, median calculation, and ESG dashboard charting logic.
+- **Pillow (PIL)**: Used to render AI bounding boxes over original `.jpg` / `.png` uploads before passing to Streamlit's `st.image`.
 
 ---
 
