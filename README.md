@@ -38,6 +38,11 @@
 
 ## 🎯 Project Overview
 
+(video)= https://drive.google.com/file/d/1dX6XTI2Xn5iDJd349aNLwZ1l8UkKZOIu/view?usp=sharing
+(ppt)= https://docs.google.com/presentation/d/1nwj153QCSEY4PGfH6oSu5kfZaJzFO8S-/edit?usp=sharing&ouid=114837124511467874673&rtpof=true&sd=true
+
+
+
 **VisionGate AI** is a production-ready prototype of an AI-driven gate triage system built for DP World port terminals. It transforms the bottleneck of manual container inspection — which takes 3–5 minutes per truck — into a **15-second fully automated pipeline**. Crucially, the solution can be **seamlessly integrated into DP World's existing systems (like CARGOES TOS)** using existing CCTV infrastructure with zero new physical sensors required.
 
 ```text
