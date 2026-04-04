@@ -39,7 +39,7 @@
 ## 🎯 Project Overview
 
 (video)= https://drive.google.com/file/d/1dX6XTI2Xn5iDJd349aNLwZ1l8UkKZOIu/view?usp=sharing <br>
-(ppt)= https://docs.google.com/presentation/d/1nwj153QCSEY4PGfH6oSu5kfZaJzFO8S-/edit?usp=sharing&ouid=114837124511467874673&rtpof=true&sd=true
+(ppt)= [https://docs.google.com/presentation/d/1nwj153QCSEY4PGfH6oSu5kfZaJzFO8S-/edit?usp=sharing&ouid=114837124511467874673&rtpof=true&sd=true](https://docs.google.com/presentation/d/1nwj153QCSEY4PGfH6oSu5kfZaJzFO8S-/edit?usp=sharing&ouid=114837124511467874673&rtpof=true&sd=true)
 
 
 
