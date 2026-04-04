@@ -401,7 +401,17 @@ def analyze_container_gemini_dual(img_bytes_1: bytes, img_bytes_2: bytes, weathe
                 "Include any discrepancies in your 'summary' field.\n\n"
                 f"[CARGO_DOCUMENT_START]\n{cargo_doc_text}\n[CARGO_DOCUMENT_END]"
             )
-        response = model.generate_content([prompt, img_pil_1, img_pil_2])
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = model.generate_content([prompt, img_pil_1, img_pil_2])
+                break
+            except Exception as exc:
+                if "429" in str(exc) or "Quota" in str(exc):
+                    if attempt < max_retries - 1:
+                        time.sleep(20)  # Wait for rate limit reset based on the 16s delay in error
+                        continue
+                raise exc
         text = response.text.strip()
         # Strip markdown fences if present
         if "```" in text:
@@ -1136,7 +1146,17 @@ def analyze_thermal_gemini(img_bytes: bytes) -> dict:
             "- If no thermal anomalies detected: return empty thermal_detections array [].\n"
             "Return ONLY the JSON, no markdown, no explanation."
         )
-        response = model.generate_content([prompt, img_pil])
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = model.generate_content([prompt, img_pil])
+                break
+            except Exception as exc:
+                if "429" in str(exc) or "Quota" in str(exc):
+                    if attempt < max_retries - 1:
+                        time.sleep(20)
+                        continue
+                raise exc
         text = response.text.strip()
         if "```" in text:
             m = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
@@ -1579,7 +1599,17 @@ def get_copilot_response(user_input: str, terminal: str) -> str:
         
         full_prompt += f"\nUser Question: {user_input}\nCopilot Answer:"
         
-        response = model.generate_content(full_prompt)
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = model.generate_content(full_prompt)
+                break
+            except Exception as exc:
+                if "429" in str(exc) or "Quota" in str(exc):
+                    if attempt < max_retries - 1:
+                        time.sleep(20)
+                        continue
+                raise exc
         return response.text.strip()
     except Exception as e:
         # Fallback to keyword matching if LLM fails

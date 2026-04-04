@@ -44,13 +44,13 @@
 Truck Arrives → Dual-Camera Capture (Left + Right Views) → Edge AI / Gemini Vision → ISO OCR → Auto-Routing → TOS Sync
 ```
 
-![Prototype Snippets & Video Demo](images/1.png)
+<!-- ![Prototype Snippets & Video Demo](images/1.png)
 ![Alt text for the image](images/2.png) 
 ![Alt text for the image](images/3.png) 
 ![Alt text for the image](images/4.png) 
 ![Alt text for the image](images/5.png) 
 ![Alt text for the image](images/6.png) 
-![Alt text for the image](images/7.png) 
+![Alt text for the image](images/7.png)  -->
 
 ### Key Features Included
 - **DP World CARGOES Integration:** Native simulation of live sync with CARGOES TOS and BoxBay smart routing.
