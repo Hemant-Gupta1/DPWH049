@@ -726,14 +726,11 @@ Ensure you have the following installed:
 ### Step 1 — Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/VisionGate-AI.git
-cd VisionGate-AI
+git clone [https://github.com/your-username/VisionGate-AI.git](https://github.com/Hemant-Gupta1/DPWH049.git)
+cd DPWH049
 ```
 
-> If you already have the project folder, navigate to it:
-> ```bash
-> cd "c:\Users\Hemant Gupta\OneDrive\Desktop\imp files\interview prep\projects\DP\VisionGate-AI"
-> ```
+
 
 ---
 
