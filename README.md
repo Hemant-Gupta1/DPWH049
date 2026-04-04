@@ -39,7 +39,7 @@
 ## 🎯 Project Overview
 
 (video)= https://drive.google.com/file/d/1dX6XTI2Xn5iDJd349aNLwZ1l8UkKZOIu/view?usp=sharing <br>
-(ppt)= https://docs.google.com/presentation/d/1nwj153QCSEY4PGfH6oSu5kfZaJzFO8S-/edit?usp=sharing&ouid=114837124511467874673&rtpof=true&sd=true
+(ppt)= [https://docs.google.com/presentation/d/1nwj153QCSEY4PGfH6oSu5kfZaJzFO8S-/edit?usp=sharing&ouid=114837124511467874673&rtpof=true&sd=true](https://docs.google.com/presentation/d/1nwj153QCSEY4PGfH6oSu5kfZaJzFO8S-/edit?usp=sharing&ouid=114837124511467874673&rtpof=true&sd=true)
 
 
 
@@ -726,14 +726,11 @@ Ensure you have the following installed:
 ### Step 1 — Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/VisionGate-AI.git
-cd VisionGate-AI
+git clone [https://github.com/your-username/VisionGate-AI.git](https://github.com/Hemant-Gupta1/DPWH049.git)
+cd DPWH049
 ```
 
-> If you already have the project folder, navigate to it:
-> ```bash
-> cd "c:\Users\Hemant Gupta\OneDrive\Desktop\imp files\interview prep\projects\DP\VisionGate-AI"
-> ```
+
 
 ---
 
