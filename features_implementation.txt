@@ -1,0 +1,85 @@
+VisionGate AI - Comprehensive Viva Preparation Guide
+==================================================
+
+This document provides a highly detailed, line-by-line mechanical breakdown of how the core features are implemented. Use this guide to defend your architectural decisions and confidently explain your code during your viva examination.
+
+--------------------------------------------------------------------------------
+1. How Metrics Get Updated After Image Upload or Page Reload
+--------------------------------------------------------------------------------
+**The Viva Question:** "If I upload an image, how exactly do the metrics on the dashboard update? Are you using real-time sockets or polling?"
+**The Answer:** It relies on a "State-Driven Database Pull" architecture powered by Streamlit's reactive rendering engine and SQLite persistent queries.
+
+**Mechanical Breakdown:**
+*   **The Upload Trigger (`app.py`, `page_gate_inspector()` & `page_thermal_inspector()`):** 
+    When the user drops an image into `st.file_uploader`, Streamlit immediately triggers a script rerun. The code reads the file byte-stream (`img_bytes_1 = uploaded_view1.read()`), invokes the API wrapper `analyze_container()`, and receives a processed JSON payload from the Gemini Vision API.
+*   **The Insertion Event:** 
+    Upon successful API extraction (`result.get("_gemini_success")`), the Python code immediately pushes the normalized data into the backend. It executes `db_utils.insert_log()`. Inside `db_utils.py`, this establishes an exclusive `sqlite3` driver connection to `visiongate.db` and performs an `INSERT INTO container_logs` SQL query, logging `damage_status`, `severity`, and `iso_code`. The connection is `.commit()`ted and swiftly closed.
+*   **The UI Refresh Mechanism (`app.py`, `page_dashboard()`):**
+    Streamlit UI components are stateless; they recalculate on navigation. When the user clicks the "🌐 Global Dashboard (ESG)" radio component in the sidebar, the routing logic at the bottom of `app.py` detects that `page == "🌐 Global Dashboard (ESG)"` and exclusively executes the `page_dashboard()` function.
+*   **The Live Polling Query:**
+    Inside `page_dashboard()`, it strictly executes `db_stats = db_utils.get_summary_stats(location=terminal)`. Moving into `db_utils.py`, this function runs synchronized aggregation queries against the live database: `SELECT COUNT(*) FROM container_logs WHERE location=?`, `SELECT COUNT(*) WHERE damage_status='CLEAR'`, and calculates `co2_tons_saved` dynamically based on pure algebraic formulas over the returned table tuples.
+*   **Final Rendering:** 
+    The dictionary `db_stats` returns securely computed integers and floats straight from the DB. They are passed directly into the `st.metric()` UI nodes. There is no cache or manual "update" button. It reflects the absolute true reality of the database table at the precise millisecond of page initialization.
+
+--------------------------------------------------------------------------------
+2. How AI Chat is Given Databases & Terminal Contexts (Yard Copilot)
+--------------------------------------------------------------------------------
+**The Viva Question:** "Your AI Chat knows current queues and terminal weather. How exactly are you grounding the LLM in that context?"
+**The Answer:** It utilizes a custom Retrieval-Augmented Generation (RAG) pipeline via dynamic prompt injection. The system aggressively feeds four different contextual pillars into a massive `system_prompt` variables string prior to calling the AI Endpoint.
+
+**Mechanical Breakdown of Database Vectoring (`db_utils.py` -> `get_db_context_for_llm()`):**
+Before communicating with Gemini, the app fires highly specific synchronized SQL queries to SQLite to compute dynamic operational throughput. The exact queries executed inside `get_db_context_for_llm` are:
+1.  **Structural Integrity Queries via `get_summary_stats`**:
+    *   `SELECT COUNT(*) FROM container_logs WHERE location=? AND inspection_type='structural'` (Total structural scans)
+    *   `SELECT COUNT(*) ... AND damage_status='CLEAR'` (Cleared containers)
+    *   `SELECT COUNT(*) ... AND severity='High'` (Critical structural flags)
+2.  **Thermal Integrity Queries via `get_thermal_stats`**:
+    *   `SELECT COUNT(*) FROM container_logs WHERE location=? AND inspection_type='thermal'` (Total thermal scans)
+    *   `SELECT COUNT(*) ... AND damage_status NOT IN ('NORMAL', 'CLEAR')` (Heat anomalies isolated)
+    *   `SELECT COUNT(*) ... AND severity='High'` (Critical thermal failures)
+3.  **Recent Log Lookups**:
+    *   `SELECT * FROM container_logs WHERE timestamp LIKE 'YYYY-MM-DD%' ORDER BY id DESC` (Fetches today's specific event ledger).
+
+Once these SQL objects return integers and row tuples, the Python function synthesizes them into physical text blocks using multiline lists (e.g., `"--- STRUCTURAL INSPECTIONS ---\nTotal containers processed: 140\n..."`). This formatted report is assigned to the `db_context` string variable. This guarantees the LLM explicitly reads live terminal status without hallucinations.
+
+**Other Contexts Injected:**
+*   **Weather Context Constraint:** A dictionary maps the `terminal` variable to literal climate string inputs (e.g., `"Monsoon Alert - Heavy Rain Forecasted"`).
+*   **PDF/Document Extraction:** If a PDF is uploaded, `PyPDF2.PdfReader` isolates the text bytes into `st.session_state.copilot_pdf_context`, which is hard-appended to the system prompt.
+*   **Chat Memory Buffering:** An iteration loop `for msg in st.session_state.messages[-5:]:` retrieves the last 5 operational interactions, embedding them as `User:` and `Copilot:` chains.
+
+--------------------------------------------------------------------------------
+3. Email Dispatching Coding Details (Trigger & Dispatch)
+--------------------------------------------------------------------------------
+**The Viva Question:** "Walk me through how exactly an email gets sent when I press this button. Are you relying on a frontend WebHook or a 3rd party MailAPI provider?"
+**The Answer:** We eschew third-party mail provider APIs (like SendGrid or Mailgun). Instead, we execute dedicated backend SMTP network protocol handshakes running entirely natively in Python.
+
+**Deep Mechanical Breakdown (`app.py`, `page_ship_delay_manager` & `send_email_alert`):**
+1.  **Input Trigger Validation:** The UI binds inputs to variables: `ship_name = st.selectbox`, `driver_email = st.text_input`, `delay_minutes = st.number_input`. The `st.button("Trigger Delay...")` initiates the workflow execution, first validating that a valid `@` symbol exists in the email input.
+2.  **Secure Credential Injection:** `os.getenv("SENDER_EMAIL")` and `os.getenv("EMAIL_APP_PASSWORD")` pull execution payloads securely from the `.env` root configuration file (mapped via `python-dotenv`). Credentials are kept entirely off the codebase.
+3.  **Packet Structuring:** Python’s built-in standard library `from email.message import EmailMessage` is instantiated. 
+    *   `msg['Subject'] = f"URGENT: DP World Gate Traffic Alert - {ship_name} Delayed"` (Header mapping)
+    *   `msg['From'] = sender_email` (Addressing Protocol)
+    *   `msg['To'] = recipient_email` (Target Resolution)
+    *   `msg.set_content(content)` loads the UTF-8 text body string into the payload section.
+4.  **SMTP Negotiation & TLS Encryption:** 
+    *   A secure cryptographic wrapper is created via `context = ssl.create_default_context()`.
+    *   An SMTP object initializes an outbound proxy: `with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:`.
+    *   The backend securely dials the Google proxy server, authenticates over the SSL tunnel via `server.login(sender_email, app_password)`, and natively pushes the protocol stream using `server.send_message(msg)`.
+5.  **State Mirroring Constraint:** Upon receiving an HTTP 2xx completion boolean from the `smtplib` wrapper, the controller logic immediately calls `db_utils.insert_ship_delay(..., sms_sent=True)`. This embeds a permanent immutable record of the dispatch event inside our local SQLite table for auditing purposes. 
+
+--------------------------------------------------------------------------------
+4. PDF Generation & Downloading Architecture
+--------------------------------------------------------------------------------
+**The Viva Question:** "How are these compliance PDFs created? Did you just fill in HTML templates and use a chromium PDF converter?"
+**The Answer:** We explicitly forbid web-based HTML-to-PDF rendering pipelines due to formatting volatility. Instead, we program the PDF directly on the bare-metal vector level using the `fpdf2` logic matrix, and generate it 100% in backend logic RAM without ever storing a physical '.pdf' file to the hard drive.
+
+**Deep Mechanical Breakdown (`app.py`, `build_audit_pdf_bytes` & `page_compliance_reports`):**
+1.  **Document Object Initialization:** The system initializes an abstract canvas using `pdf = FPDF(orientation="L", unit="mm", format="A4")`. From this moment, we are controlling exact millimeter coordinates on a virtual page. 
+2.  **SQL Data Sync:** The method mandates `db_utils.fetch_logs_by_location(terminal)` to grab a `dict` array containing the latest `container_logs` row entries directly from SQLite (e.g., Timestamp, ISO Code, Severity).
+3.  **Procedural Grid Painting:** The table is constructed dynamically. There are no templates.
+    *   We invoke `pdf.add_page()` to build the canvas.
+    *   We toggle the stylization pen via `pdf.set_font("helvetica", "B", 12)`.
+    *   We establish horizontal bounding boxes `widths = [40, 30, 22, 35, 25, 55]`. 
+    *   A massive `for row in logs:` iteration executes exactly simulating database tables: `pdf.cell(widths[0], 8, str(row['timestamp']), border=1)`. This commands the renderer to stamp borders (borders=1) wrapping raw SQL variables over designated millimeter (width=40) segments.
+4.  **Fileless Volatile Exports:** Instead of risking Input/Output crashes by writing `document.save("report.pdf")` to the local C: drive, the program invokes `bytes(pdf.output(dest='S'))`. This radically forces the compiler to return pure binary bytes `(b'%PDF-1.4...\x00\x00')` directly into volatile system RAM.
+5.  **Streamlit Direct Download Binding:** In the frontend function `page_compliance_reports()`, the raw returned bytecode is mapped to a variable `report_bytes`. The command `st.download_button(label="...", data=report_bytes, mime="application/pdf")` integrates the binary package natively to the browser's download protocol endpoint. When the user clicks the UI button, they receive the byte-stream identically to downloading a real file, achieving total security by bypassing disk writes.

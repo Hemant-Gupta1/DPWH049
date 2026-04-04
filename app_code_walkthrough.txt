@@ -1,0 +1,157 @@
+VisionGate AI - Deep Dive: app.py
+============================================
+This document walks through `app.py` function-by-function (and logic-block-by-logic-block) explaining the 
+"what" and the "how" of the frontend application, 
+the AI Vision APIs, and the UI routing for your Viva preparation.
+
+--------------------------------------------------------------------------------
+1. GLOBAL IMPORTS AND SETUP (Lines 1 - 46)
+--------------------------------------------------------------------------------
+*   **What it does:** Initializes dependencies, setting the timezone to IST, instantiates the database, 
+and loads environment variables.
+*   **How it works:** 
+    - `import streamlit as st`: Imports the primary web framework used for the dashboard components.
+    - `from PIL import Image, ImageDraw, ImageFont`: Imports pillow for rendering AI bounding box 
+    overlays over uploaded images.
+    - `import PyPDF2` and `from fpdf import FPDF`: Used for document 
+    processing (reading user-provided manifests) and generating dynamic audit reports, respectively.
+    - `db_utils.init_db()`: Triggers early. Forces the SQLite backend to generate schemas before the 
+    UI boots up, preventing "table not found" panics. 
+    - `load_dotenv()`: Pulls API keys from your `.env` to avoid hardcoding secrets.
+    - `st.set_page_config(...)`: Sets the browser tab title, favicon, and configures the page layout to 
+    span full-width using `layout="wide"`.
+
+--------------------------------------------------------------------------------
+2. GLOBAL CSS STYLES INJECTION (Lines 47 - 244)
+--------------------------------------------------------------------------------
+*   **What it does:** Overrides Streamlit's default basic theme with a highly premium, dark-mode, animated "DP World" branded aesthetic.
+*   **How it works:** Uses `st.markdown("<style>...</style>", unsafe_allow_html=True)`. It manually targets Streamlit's implicit CSS classes. Examples include:
+    - `[data-testid="stSidebar"]`: Receives hover shadow effects.
+    - Custom Alert Banners (`.custom-info`, `.custom-warning`): Injected with CSS flexbox properties and glowing box-shadows. Badges like `.badge-green` are built manually using standard CSS rules.
+    - It instructs the HTML DOM renderer running on Chrome/Edge to execute standard CSS3 properties over Streamlit's React node tree.
+
+--------------------------------------------------------------------------------
+3. SIDEBAR NAVIGATION SYSTEM (Lines 245 - 303)
+--------------------------------------------------------------------------------
+*   **What it does:** Creates the persistent navigation pane on the left, rendering a terminal selector and a page multiplexer.
+*   **How it works:** 
+    - Nested in a `with st.sidebar:` context manager block. Everything printed here exists strictly inside the sidebar container.
+    - `st.selectbox("Select Global Terminal", ...)` creates a dropdown holding physical terminal IDs (Dubai, Mumbai, etc). The selection is assigned to the `terminal` variable persistently. This `terminal` variable is crucial as it feeds into nearly every database SQL filter function later in the script.
+    - `page = st.radio("Go to", options=[...])`: Acts as the main router switch constraint. The user selects a string representing the page, mapped to the `page` string variable.
+
+--------------------------------------------------------------------------------
+4. GEMINI API INITIALIZATION & PDF EXTRACTION (Lines 304 - 337)
+--------------------------------------------------------------------------------
+*   **What it does:** Authenticates the LLM backend endpoint and creates utility functions.
+*   **How it works:** 
+    - Uses a `try/except` block targeting `st.secrets.get` (for cloud instances) but falls back natively to `os.getenv("GEMINI_API_KEY")` (for local `.env`).
+    - `@st.cache_resource` decorates `_get_gemini_model()`. This prevents Python from establishing a new TCP handshake with Google's API servers on every component rerender. It configures `genai` globally and binds precisely the `"gemini-2.5-flash"` model identifier payload.
+    - `extract_text_from_pdf(pdf_bytes)`: Wraps PyPDF2 logic. It opens a virtual stream `io.BytesIO(pdf_bytes)`, navigates through `reader.pages`, and executes `.extract_text()`, returning a single concatenated string representing the uploaded shipping document.
+
+--------------------------------------------------------------------------------
+5. VISION AI CORE INFERENCE (Lines 338 - 458)
+--------------------------------------------------------------------------------
+*   **What it does:** Evaluates physical damage or structural vulnerabilities by passing two 
+side-by-side images of a container to a Multi-Modal AI, along with optional manifest documentation.
+
+*   **How it works (`analyze_container_gemini_dual`):**
+    - Takes `img_bytes_1`, `img_bytes_2`, `weather_context`, and `cargo_doc_text`.
+    - Immediately deserializes the file-bytes back into image objects via
+     `Image.open(io.BytesIO()).convert("RGB")`.
+    - Formats a rigorous JSON-enforcing `prompt`. The system specifies literal
+     keys (`iso_code`, `overall_status`, `bbox_normalized`) the LLM must return.
+    - **Document Injection**: If a PDF string (`cargo_doc_text`) is provided, 
+    Python automatically concatenates it structurally into the prompt utilizing the 
+    `[CARGO_DOCUMENT_START]` prefix block.
+    - **Execution Loop**: Implements an automatic retry limit wrapper
+     (`for attempt in range(max_retries)`). It sends the text prompt alongside BOTH images simultaneously 
+     to `model.generate_content(...)`. If Google answers HTTP 429 Quota errors, `time.sleep(20)` blocks the 
+     thread before retrying automatically.
+    - **Parsing**: `json.loads(text)` forces the stringified response back into a navigable Python dictionary output, adding an explicit `_gemini_success = True` key to communicate payload integrity back to the UI function.
+
+--------------------------------------------------------------------------------
+6. BOUNDING BOX ANNOTATION LOGIC (Lines 460 - 496)
+--------------------------------------------------------------------------------
+*   **What it does:** Draws visible colored squares over the recognized damages in the uploaded image.
+*   **How it works (`annotate_with_ai_boxes`):**
+    - Retrieves the normalized bounding boxes returned by Gemini `[x1, y1, x2, y2]`. 
+    Notice Gemini yields 0.0 to 1.0 floating point arrays indicating percentage spatial orientations.
+    - Maps floats to pixel domains: multiplying `int(x1 * w)` 
+    (where `w` is the raw pixel width of your image buffer).
+    - Iterates over Python dictionaries. Utilizes `ImageDraw.Draw` to apply a `.rectangle` with a 
+    colored outline targeting specific physical pixel arrays. Determines the color outline dynamically 
+    via a preset map (`COLORS = {"critical": (220, 38, ...)`).
+
+--------------------------------------------------------------------------------
+7. AUDIT PDF BYTE BUFFER GENERATOR (Lines 499 - 581)
+--------------------------------------------------------------------------------
+*   **What it does:** Renders the structural PDF audit.
+*   **How it works (`build_audit_pdf_bytes`):**
+    - Described natively in your earlier guides. Extracts variables via 
+    `db_utils.fetch_logs_by_location(terminal)`. Generates an `FPDF` landscape page. 
+    Prints row arrays over rigid border properties using `pdf.cell()`. 
+    Completes processing into pure buffered binary arrays employing `bytes(pdf.output())` and 
+    circumvents saving standard output to local root directories.
+
+--------------------------------------------------------------------------------
+8. PAGE 1: GLOBAL DASHBOARD ESG (Lines 582 - 760)
+--------------------------------------------------------------------------------
+*   **What it does:** Handles compiling the operational KPIs.
+*   **How it works (`page_dashboard`):**
+    - Queries execution function `db_stats = db_utils.get_summary_stats(location=terminal)`.
+    - Utilizes native Streamlit Layout features like `c1, c2, c3, c4 = st.columns(4)` to subdivide 
+    vertical web-flow into grid structures.
+    - Each grid cell utilizes `c1.metric(...)` which expects a label and a delta computation. It passes 
+    the raw integers extracted dynamically from `db_stats` dictionary variables mapping SQL returns 
+    natively to the HTML elements.
+    - **Data Chart**: Calls `raw_hourly_data = db_utils.get_hourly_throughput()`. Maps the dictionary
+     output explicitly into a Pandas DataFrame `pd.DataFrame(...)` and pushes it straight 
+     through `st.bar_chart(...)` natively graphing the throughput curve
+      dynamically based on SQLite row frequencies.
+
+--------------------------------------------------------------------------------
+9. PAGE 2: GATE INSPECTOR (Lines 762 - 1097)
+--------------------------------------------------------------------------------
+*   **What it does:** The primary interface for simulating the Dual-Camera Orin Edge framework capturing shipping gate passes.
+*   **How it works (`page_gate_inspector`):**
+    - Evaluates dual uploads mapping `st.file_uploader(...)` to `uploaded_view1` and `uploaded_view2`. If neither exists, UI stops at upload UI prompts.
+    - **Caching:** Generates a complex string named `cache_key` appending file names and file bit-sizes. If `cache_key not in st.session_state:` it ensures API requests execute ONLY once per identical image configuration, significantly circumventing LLM inference latency during page state renders.
+    - Invokes `result = analyze_container(...)`.
+    - **Persistence DB Write**: Upon receiving the parsed dict, `db_utils.insert_log(...)` performs synchronous block execution committing metrics to local SQLite for future Dashboards checks.
+    - **Routing Map**: The script extracts `routing_action`. Displays literal severity grids mapping CSS strings parsed manually using `unsafe_allow_html=True`. It finally draws image side panels processing the bounding box arrays returning marked `annotated_1` and `annotated_2`. Displays raw extraction JSON dynamically expanding using `st.json()`.
+
+--------------------------------------------------------------------------------
+10. PAGE 5: THERMAL INSPECTOR (Lines 1098 - 1484)
+--------------------------------------------------------------------------------
+*   **What it does:** Specific infrared parsing logic replacing structural evaluations for refrigeration systems.
+*   **How it works (`analyze_thermal_gemini`, `page_thermal_inspector`):**
+    - Runs largely parallel logical concepts to Gate Inspector implementation, but swaps prompting rules dynamically. 
+    - Notice `prompt` specifies different requirements (`"thermal_status": "NORMAL/ELEVATED/WARNING/CRITICAL"` vs structural).
+    - Writes SQL identically through `db_utils.insert_log` but passes a differing keyword arg: `inspection_type="thermal"`. Because of this constraint, later metrics functions strictly know whether to count structural or thermal checks independent of one another. Formats and prints different badge labels reflecting heat anomalies using modified hex-code variables in `<style>`.
+
+--------------------------------------------------------------------------------
+11. PAGE 3: YARD COPILOT RAG CHAT (Lines 1486 - 1745)
+--------------------------------------------------------------------------------
+*   **What it does:** Provides LLM chat capabilities grounding responses intrinsically to your databases.
+*   **How it works (`page_yard_copilot` & `get_copilot_response`):**
+    - Checks initial variables assigning `st.session_state.messages = [...]` setting base Assistant onboarding chats.
+    - Implements PDF extraction exactly similar to Gate Inspector but passes strings into `st.session_state.copilot_pdf_context`. 
+    - The UI utilizes native Streamlit chat nodes like `st.chat_message("user")` looping the history payload generating visual bubbles. When an `<input layer>` fires, `prompt := st.chat_input()` it appends the new message to state.
+    - Computes `db_context = db_utils.get_db_context_for_llm(location=terminal)`. Assigns it securely to formatting arrays generating the massive block variable `full_prompt`. The generator explicitly bypasses external `Google Chat` objects manually structuring pure string completions via `model.generate_content()`. 
+
+--------------------------------------------------------------------------------
+12. PAGE 6: SHIP DELAY MANAGER (Lines 1747 - 1827)
+--------------------------------------------------------------------------------
+*   **What it does:** Automates trigger delay notification architectures via network SMTP payloads and registers actions to database blocks.
+*   **How it works (`send_email_alert` & `page_ship_delay_manager`):**
+    - Form binds constraints natively. `st.number_input()` retrieves `delay_minutes` binding variable dynamically as integers.
+    - If executed, pushes boolean completion triggers capturing returns of `send_email_alert()`. The SMTP handshake procedure compiles strings locally mapping via `.env`, creates standard TLS authentication layers via Python's standard `ssl`, triggers Google Server payloads remotely logging `insert_ship_delay` locally sequentially mapping exact timing, sender info, delay constraints guaranteeing synchronization across operations. Loads specific visualization grids pulling native delays rendering basic `pd.DataFrame`.
+
+--------------------------------------------------------------------------------
+13. PAGE 4: COMPLIANCE REPORTS & ROUTER (Lines 1828 - End)
+--------------------------------------------------------------------------------
+*   **What it does:** Renders the PDF download views and initiates routing sequence constraints mapping native components.
+*   **How it works:**
+    - Generates bytes directly fetching `report_bytes = build_audit_pdf_bytes(...)`. Feeds the byte-array locally avoiding physical hard-drive execution to `st.download_button()`. 
+    - Runs lower live log previews aggregating limited array tables utilizing native `st.dataframe`.
+    - **Main Loop**: The `main()` logic switch routes variables depending on user choice evaluated via standard conditionals: `if page == "...": page_dashboard()`. When execution wraps, Python standard `if __name__ == "__main__":` natively boots execution starting application sequence loops indefinitely holding application memory.

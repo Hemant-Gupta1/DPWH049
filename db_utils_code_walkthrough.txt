@@ -1,0 +1,69 @@
+VisionGate AI - Deep Dive: db_utils.py
+============================================
+This document walks through `db_utils.py` function-by-function explaining the database mechanics, the SQL logic structures, and how persistent state is dynamically retrieved for your Viva preparation.
+
+--------------------------------------------------------------------------------
+1. GLOBAL CONFIGURATION (Lines 1 - 36)
+--------------------------------------------------------------------------------
+*   **What it does:** Sets up the SQLite driver, local configuration paths, and connection pooling logic.
+*   **How it works:**
+    - `IST` ensures universal standard mapping for database logs utilizing Python’s built-in `datetime.timezone(datetime.timedelta(hours=5, minutes=30))`. This guarantees all DB entries are synchronized identically regardless of the server's native system clock.
+    - `DB_PATH = os.path.join(...)` leverages runtime OS modules evaluating exactly where `db_utils.py` lives, guaranteeing `visiongate.db` generates seamlessly in the same directory.
+    - `_get_connection()` functions as a connection factory. Instead of repeatedly writing connection logic, it spins up `sqlite3.connect()`. Crucially, it sets `conn.row_factory = sqlite3.Row`. This returns database representations not as simple tuples `('CLEAR', 'Low')`, but as natively indexed key-value dictionaries mapping exact columns `['damage_status']`, significantly preventing indexing crashes later in `app.py`.
+
+--------------------------------------------------------------------------------
+2. SCHEMA BUILDER (Lines 37 - 78)
+--------------------------------------------------------------------------------
+*   **What it does:** Initializes and provisions identical table architectures required for mapping frontend data structures into normalized SQL.
+*   **How it works (`init_db`):**
+    - Boots `CREATE TABLE IF NOT EXISTS container_logs`. Builds absolute constants formatting headers like `timestamp TEXT NOT NULL` and enforcing constraints explicitly binding primary keys looping automatically via `AUTOINCREMENT`.
+    - Detects older databases performing a literal structural migration: `ALTER TABLE container_logs ADD COLUMN inspection_type`. Uses `try/except sqlite3.OperationalError:` because running `ALTER TABLE` twice inherently throws an error. It captures the crash securely and suppresses it, keeping the process idempotent.
+    - Builds `CREATE TABLE IF NOT EXISTS ship_delays`. Executes `conn.commit()` synchronously flushing the raw schema writes definitively into local disk storage memory.
+
+--------------------------------------------------------------------------------
+3. WRITE OPERATIONS (Lines 80 - 134)
+--------------------------------------------------------------------------------
+*   **What it does:** Maps the dictionary returns from the Gemini Model onto strict database insert streams for application persistence.
+*   **How it works (`insert_log` & `insert_ship_delay`):**
+    - The functions consume explicitly typed strings from `app.py` parameters.
+    - Captures time variables defaulting to `timestamp = datetime.datetime.now(IST).strftime(...)` forcing strings matching `"YYYY-MM-DD HH:MM:SS"`.
+    - Generates string payloads defining explicit injection matrices mapping string placeholders `VALUES (?, ?, ?, ?, ?, ?, ?)`. It subsequently binds raw parameters natively, `(timestamp, iso_code, ...)` overriding the generic text. By executing literal tuple bindings, it mechanically prevents runtime SQL injection vulnerabilities.
+    - Retrieves memory IDs sequentially tracking exactly what element was updated through `row_id = cursor.lastrowid` before committing. 
+
+--------------------------------------------------------------------------------
+4. READ OPERATIONS (Lines 135 - 208)
+--------------------------------------------------------------------------------
+*   **What it does:** Extracts full table states returning Python dict-lists rendering datasets onto global compliance components.
+*   **How it works (`fetch_all_logs` & `fetch_logs_today`):**
+    - Defines `SELECT * FROM container_logs ORDER BY id DESC`. Sorting mechanically shifts newer records to indexing prefix zero `[0]`.
+    - Retrieves execution block parameters via `.fetchall()`. Because factory binds `sqlite3.Row`, executing `[dict(row) for row in rows]` guarantees perfect nested dictionary formations perfectly serializing object constraints formatting precisely for JSON arrays.
+    - Specific `LIKE` syntax implementations: `fetch_logs_today()` formats the current time prefix `"202X-0X-XX"`. Queries matching SQL using standard wildcard logic `"SELECT * ... WHERE timestamp LIKE ?"` with tuple payload `(f"{today}%",)`.
+
+--------------------------------------------------------------------------------
+5. LIVE ANALYTICS AGGREGATION & ESG (Lines 210 - 442)
+--------------------------------------------------------------------------------
+*   **What it does:** Transforms raw table components calculating mathematically precise structural efficiency throughput ratios avoiding iterative Python loops.
+*   **How it works (`get_summary_stats`, `get_thermal_stats`, `get_ship_delay_stats`):**
+    - **Dynamic Filtering (`get_summary_stats`)**: Initializes empty lists for `conditions = []` and `params = []`. Conditionals verify UI state configurations globally passing strings sequentially updating array mappings (e.g. `if location: conditions.append("location = ?")`). Binds list configurations manually forming massive exact constraint strings dynamically: `WHERE location = ? AND inspection_type = ?`.
+    - Extrapolates variables immediately fetching aggregate objects utilizing `SELECT COUNT(*)`. It avoids pulling thousands of rows into volatile RAM merely to execute Python `len()`. Directly executing SQL math scales efficiently preventing app.py from choking on heavy datasets internally.
+    - **Derived Calculations**: Calculates raw math independently deriving metrics offline. Evaluates `idling_hours = total * 5 / 60`, then compounds that factor directly establishing variables generating CO2 metrics: `co2_tons = idling_hours * 10 / 1000`. Returns exact dictionaries binding calculations to string dictionary representations.
+    - **Thermal Independence (`get_thermal_stats`)**: Isolates structural data entirely establishing fixed constants `conditions = ["inspection_type = 'thermal'"]`. Evaluates subsets locating logic clusters excluding normals evaluating variables dynamically `NOT IN ('NORMAL', 'CLEAR')`.
+
+--------------------------------------------------------------------------------
+6. YARD COPILOT CONTEXT INJECTION (Lines 444 - 513)
+--------------------------------------------------------------------------------
+*   **What it does:** Converts numerical SQLite objects into natural textual descriptions mechanically translating data structures for Large Language Models logic gates.
+*   **How it works (`get_db_context_for_llm`):**
+    - Runs previously discussed aggregate tools fetching synchronous counts into assigned dict variables `stats`, `thermal_stats`.
+    - Constructs raw string matrices defining a list structure `lines = []`. Commences string array generation injecting f-string configurations interpolating variable keys cleanly: `f"Cleared for loading: {stats['cleared']}"`.
+    - **Formatting Individual History**: Runs a for-loop mapping 15 sequential components slicing tuples statically `structural_today[:15]`. Maps column indices explicitly into sentence architectures like `f"  [{log['timestamp']}] ISO: {log['iso_code']} | Status: {log['damage_status']}"`.
+    - Appends objects sequentially executing standard logic flow conditional tests. The routine concludes running `"\n".join(lines)`, outputting a colossal concatenated singular string block payload feeding completely transparent operational details into `app.py` for Gemini API ingestion.
+
+--------------------------------------------------------------------------------
+7. SEVERITY MAPPING UTILITY (Lines 514 - 536)
+--------------------------------------------------------------------------------
+*   **What it does:** Compresses complex AI JSON severities ("moderate", "critical", "minor") down into simplified DB strings ("Low", "Medium", "High").
+*   **How it works (`map_severity`):**
+    - Identifies logic mappings dictating mathematical severity priorities tracking standard hash tables `severity_rank = {"critical": 3, "severe": 3, "moderate": 2, "minor": 1}`.
+    - Initiates indexing evaluating zero `worst = 0`. Iterates array components retrieved directly evaluating highest structural thresholds implementing standard absolute maxima isolation algorithms `worst = max(worst, severity_rank.get(sev, 1))`.
+    - Discloses final extraction using fixed hash map retrieval `.get(worst, "Low")`. Guaranteed return state executing perfectly mapped logic strings safely formatted matching `.db` column constraints.

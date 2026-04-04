@@ -307,7 +307,11 @@ with st.sidebar:
 # Model: Gemini 1.5 Flash (Google DeepMind).
 # ─────────────────────────────────────────────────────────────────────────────
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", st.secrets.get("GEMINI_API_KEY", ""))
+try:
+    _secret_key = st.secrets.get("GEMINI_API_KEY", "")
+except Exception:
+    _secret_key = ""
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", _secret_key)
 
 
 @st.cache_resource(show_spinner=False)
