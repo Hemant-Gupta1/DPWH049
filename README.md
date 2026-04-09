@@ -72,7 +72,7 @@ Truck Arrives → Dual-Camera Capture (Left + Right Views) → Edge AI / Gemini 
 | Problem | Traditional Approach | VisionGate AI Solution |
 |---|---|---|
 | Container damage detection | Manual visual inspection (5 min) | Dual-view Edge AI / Gemini Vision (15 sec) |
-| ISO code reading | Manual OCR / human reading | Automated OCR (99.7% accuracy) |
+| ISO code reading | Manual OCR / human reading | Automated OCR |
 | Thermal anomaly detection | Expensive handheld FLIR cameras | AI-powered thermal analysis from gate camera |
 | Reefer failure prevention | Manual temperature logging | Automated real-time reefer status assessment |
 | Damage routing decisions | Human supervisor | Automated gate barrier + yard routing |
@@ -640,6 +640,30 @@ Dual-View Container Image Upload (2 images = 1 container) + Optional Cargo Docum
 | Audit Ledger | Hyperledger Fabric (Blockchain) |
 | Database | PostgreSQL + TimescaleDB |
 
+### Database Schema (Local Edge Implementation)
+
+Our edge-terminal simulation uses an embedded SQLite architecture (`visiongate.db`) with zero configuration, featuring two primary tracking tables:
+
+**1. `container_logs` Table:**
+- `id` (INTEGER PRIMARY KEY)
+- `timestamp` (TEXT) - Standardized to IST
+- `iso_code` (TEXT) - Extracted container ID
+- `damage_status` (TEXT) - CLEAR, MINOR_DAMAGE, WARNING, CRITICAL
+- `severity` (TEXT) - Simplified internal ranking (Low, Medium, High)
+- `recommended_action` (TEXT) - Routing decision (e.g., VESSEL_LOAD, MAINTENANCE_YARD)
+- `location` (TEXT) - Terminal geography (e.g., Dubai, London)
+- `inspection_type` (TEXT) - Logic separation for 'structural' vs 'thermal' modes
+
+**2. `ship_delays` Table:**
+Tracks automated logistics alerts including `ship_name`, `terminal`, `delay_minutes`, `driver_contact` and `sms_sent` status.
+
+### Why This Tech Stack? (Technology Rationale)
+
+- **Streamlit (over React/Node):** Enabled ultra-rapid iteration in a pure Python environment perfectly suited for our heavy data manipulation and ML endpoints. Handled Numpy/Pandas matrices inherently and made drawing dynamic Pillow bounding boxes significantly easier than building separate REST JSON bridges to a frontend.
+- **Gemini 2.5 Flash API (over standard GPT-4o):** Provided superior cost-to-speed ratios for heavy Multi-modal RAG operations. Sending multiple high-resolution images combined with large extracted PDF context blocks required a massive context window and rapid processing, which Gemini excelled in.
+- **SQLite (over PostgreSQL/MySQL):** A heavy DB infrastructure was unnecessary overkill for a decentralized "edge-terminal" simulation. SQLite retains strict relational integrity and ACID compliance with zero configuration.
+- **PyPDF2 (over separate Document/Vision models):** We extracted native string characters directly from digital PDFs instead of using OCR on document images. This accelerates inference and completely zeroes out LLM text hallucinations.
+
 ---
 
 ## 🚀 The REAL ML Stack (Path to Production)
@@ -809,10 +833,9 @@ streamlit run app.py --server.headless true --server.port 8501 --server.address 
 │                                                        │
 │  🚛 Truck Arrives                                      │
 │       │                                               │
-│  📷 4x Camera Array (front/rear/left/right panels)    │
+│  📷 Camera Array (front/rear/left/right panels)    │
 │  🌡️ FLIR Thermal Camera (7.5–14μm wavelength)         │
 │       │                                               │
-│  ⚙️  NVIDIA Jetson Orin (Edge Node)                   │
 │       ├── YOLOv8 INT8: Structural Damage (< 200ms)    │
 │       ├── EasyOCR: ISO 6346 Code Reading              │
 │       └── Thermal AI: Heat Anomaly Detection          │
