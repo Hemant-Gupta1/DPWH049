@@ -335,7 +335,7 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
     except Exception as e:
         return f"[Error extracting PDF text: {str(e)}]"
 
-def analyze_container_gemini_dual(img_bytes_1: bytes, img_bytes_2: bytes, weather_context: str = "Clear", cargo_doc_text: str = None) -> dict:
+def analyze_container_gemini_dual(img_bytes_1: bytes, img_bytes_2: bytes, weather_context: str = "Clear", cargo_doc_text: str = None, ml_results: dict = None) -> dict:
     """
     Sends TWO container view images to Gemini Vision in a single multi-image
     API call for a unified structural inspection of one container.
@@ -343,6 +343,11 @@ def analyze_container_gemini_dual(img_bytes_1: bytes, img_bytes_2: bytes, weathe
     Image 1 = Left / Front panel view.
     Image 2 = Right / Rear panel view.
     cargo_doc_text = Optional extracted text from a Bill of Lading / Manifest PDF.
+    ml_results = Optional dict from EdgeVisionProcessor with YOLOv8 + EasyOCR results.
+
+    When ml_results is provided, the ML detections (YOLO bounding boxes, OCR ISO code)
+    are injected into the Gemini prompt alongside the images, giving the LLM both
+    visual data and concrete ML evidence for a more grounded, accurate analysis.
 
     Returns structured JSON: ISO code, damage detections (each tagged with
     'view': 1 or 2) with normalized bounding boxes, severity, routing action,
@@ -352,12 +357,42 @@ def analyze_container_gemini_dual(img_bytes_1: bytes, img_bytes_2: bytes, weathe
         img_pil_1 = Image.open(io.BytesIO(img_bytes_1)).convert("RGB")
         img_pil_2 = Image.open(io.BytesIO(img_bytes_2)).convert("RGB")
         model = _get_gemini_model()
+
+        # ── Build ML context injection block (if ML results available) ──
+        ml_context_block = ""
+        if ml_results and ml_results.get("ml_detections"):
+            ml_context_block = (
+                "\n\nIMPORTANT — ML PRE-ANALYSIS RESULTS:\n"
+                "A local ML pipeline (YOLOv8 object detection + EasyOCR text recognition) has already "
+                "pre-analysed both images and detected the following:\n\n"
+                f"ML Detections ({ml_results.get('ml_detection_count', 0)} found):\n"
+                f"{json.dumps(ml_results.get('ml_detections', []), indent=2)}\n\n"
+            )
+            if ml_results.get("ml_iso_code"):
+                ml_context_block += f"ML-Extracted ISO Code: {ml_results['ml_iso_code']} (valid: {ml_results.get('ml_iso_valid', False)})\n"
+            ml_context_block += (
+                f"ML Preliminary Status: {ml_results.get('ml_overall_status', 'UNKNOWN')}\n\n"
+                "INSTRUCTIONS FOR USING ML RESULTS:\n"
+                "- Use these ML detections as GROUND TRUTH anchors alongside your own visual analysis.\n"
+                "- Incorporate the ML bounding boxes into your response — they are spatially accurate.\n"
+                "- You may refine, merge, or add additional detections that the ML model may have missed.\n"
+                "- The ML-detected ISO code should be preferred unless you can clearly read a different code in the images.\n"
+                "- Your final output should combine ML evidence with your visual reasoning for the most accurate result.\n"
+            )
+        elif ml_results and ml_results.get("ml_iso_code"):
+            ml_context_block = (
+                "\n\nML PRE-ANALYSIS: An EasyOCR pipeline extracted the following ISO code from the images:\n"
+                f"ISO Code: {ml_results['ml_iso_code']} (valid: {ml_results.get('ml_iso_valid', False)})\n"
+                "Prefer this ML-extracted code unless you can clearly read a different one.\n"
+            )
+
         prompt = (
             "You are an expert AI inspector for a port terminal gate system.\n"
             "You are receiving TWO images of the SAME shipping container taken from different angles:\n"
             "- Image 1 (first image): Left / Front panel view\n"
             "- Image 2 (second image): Right / Rear panel view\n\n"
             f"Also consider the current port weather: {weather_context}. Evaluate if the detected damage creates a specific vulnerability to this weather (e.g., if there is a hole/rust crack and heavy rain is forecasted, warn about 'Water Ingress Cargo Loss').\n\n"
+            f"{ml_context_block}"
             "Analyze BOTH images together as a SINGLE container inspection and return ONLY a JSON object:\n\n"
             "{\n"
             '  \"iso_code\": \"container code e.g. MSCU 1234567 or null (check both views)\",\n'
@@ -437,24 +472,29 @@ def analyze_container(img_bytes_1: bytes, img_bytes_2: bytes, weather_context: s
     (left/front + right/rear views) and returns a single unified analysis.
     Optionally accepts extracted cargo document text for cross-referencing.
 
-    Wraps the production edge architecture execution while ultimately defaulting
-    to the cloud Gemini API for the hackathon live demo to guarantee stability.
+    Pipeline (Hybrid ML + AI):
+        1. YOLOv8 runs local damage detection on both images
+        2. EasyOCR extracts ISO 6346 code from both images
+        3. ML results + original images → Gemini API for enhanced analysis
+        4. Falls back to Gemini-only if ML models are unavailable
     """
-    # --- PRODUCTION ARCHITECTURE PROOF ---
-    # In a real deployed edge node (NVIDIA Jetson at the physical gate), we would run:
-    # edge_processor = EdgeVisionProcessor()
-    # edge_damage_1 = edge_processor.run_yolo_damage_detection(img_bytes_1)  # Camera 1
-    # edge_damage_2 = edge_processor.run_yolo_damage_detection(img_bytes_2)  # Camera 2
-    # edge_iso_code = edge_processor.run_paddle_ocr(img_bytes_1)  # Best view for ISO
-    # merged_result = merge_edge_detections(edge_damage_1, edge_damage_2, edge_iso_code)
-    # ---------------------------------------
+    # ── STAGE 1: Local ML Inference (YOLOv8 + EasyOCR) ──
+    ml_results = None
+    try:
+        edge_processor = EdgeVisionProcessor()
+        if edge_processor.available:
+            ml_results = edge_processor.run_dual_view_inspection(img_bytes_1, img_bytes_2)
+    except Exception as e:
+        # ML pipeline failed — fall back to Gemini-only gracefully
+        ml_results = None
 
-    # --- HACKATHON LIVE DEMO OVERRIDE ---
-    # For the purpose of this 24-hour hackathon live demo,
-    # we bypass the local edge-inference to avoid local dependency crashes
-    # (e.g. ultralytics/paddleocr missing on judges' presentation machine)
-    # and utilize Gemini Multimodal API for guaranteed accurate results.
-    return analyze_container_gemini_dual(img_bytes_1, img_bytes_2, weather_context, cargo_doc_text=cargo_doc_text)
+    # ── STAGE 2: Pass images + ML results to Gemini for enhanced analysis ──
+    return analyze_container_gemini_dual(
+        img_bytes_1, img_bytes_2,
+        weather_context,
+        cargo_doc_text=cargo_doc_text,
+        ml_results=ml_results,
+    )
 
 
 def annotate_with_ai_boxes(image: Image.Image, detections: list) -> Image.Image:

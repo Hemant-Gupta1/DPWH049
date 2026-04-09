@@ -31,3 +31,11 @@ desktop.ini
 dist/
 build/
 *.egg-info/
+
+# ─── ML Model Weights & Training ───
+models/*.pt
+models/*.onnx
+models/training_run/
+runs/
+*.pt
+datasets/
