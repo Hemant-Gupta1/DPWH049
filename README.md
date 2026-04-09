@@ -21,18 +21,15 @@
 ## 📋 Table of Contents
 
 1. [Project Overview](#-project-overview)
-2. [Hackathon Guardrail Compliance](#-hackathon-guardrail-compliance)
-3. [Application Architecture](#-application-architecture)
-4. [Feature Breakdown](#-feature-breakdown)
-5. [Mathematical Assumptions & Metric Derivations](#-mathematical-assumptions--metric-derivations)
-6. [Tech Stack](#-tech-stack)
-7. [Installation & Setup](#-installation--setup)
-8. [Running the Application](#-running-the-application)
-9. [Page-by-Page Guide](#-page-by-page-guide)
-10. [System Architecture Diagram](#-system-architecture-diagram)
-11. [ESG Impact](#-esg-impact--dp-world-sustainability)
-12. [Future Roadmap](#-future-roadmap)
-13. [Troubleshooting](#-troubleshooting)
+2. [Market Analysis & ESG Alignment](#-market-analysis--esg-alignment-hackathon-guardrails)
+3. [Feature Breakdown](#-feature-breakdown)
+4. [Mathematical Assumptions & Metric Derivations](#-mathematical-assumptions--metric-derivations)
+5. [Tech Stack](#-tech-stack)
+6. [Installation & Setup](#-installation--setup)
+7. [Running the Application](#-running-the-application)
+8. [System Architecture](#-system-architecture)
+9. [ESG Impact](#-esg-impact--dp-world-sustainability)
+10. [Troubleshooting](#-troubleshooting)
 
 ---
 
@@ -121,45 +118,6 @@ DP World operates in **70+ countries**. VisionGate is built for global ubiquity 
 
 ---
 
-## 🏗️ Application Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                          VisionGate AI                              │
-│                      (Streamlit Frontend)                           │
-├───────────────┬───────────────┬────────────────┬─────────────┬───────────────┤
-│  Page 1        │  Page 2        │  Page 5          │  Page 3      │  Page 4        │
-│  Global        │  Gate          │  Thermal         │  Yard        │  Compliance    │
-│  Dashboard     │  Inspector     │  Inspector       │  Copilot     │  Reports       │
-│  (ESG)         │  (Vision AI)   │  (Infrared AI)   │  (AI Chat)  │  (Audit)       │
-├───────────────┴───────────────┴────────────────┴─────────────┴───────────────┤
-│                      Simulated Backend Layer                        │
-│  ┌──────────────┐  ┌─────────────────┐  ┌────────────────────┐  │
-│  │  PIL/YOLOv8  │  │  Gemini LLM      │  │  SQLite Database    │  │
-│  │  (Bounding   │  │  (Yard Copilot)  │  │  (container_logs)   │  │
-│  │   Boxes)     │  │  (RAG w/ DB)     │  │  inspection_type:   │  │
-│  └──────────────┘  └─────────────────┘  │  structural/thermal │  │
-│                                          └────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────────────────┘
-```
-
-### Production Architecture (What It Would Scale To)
-
-```
-Truck → Gate Cameras (4x) → NVIDIA Jetson Orin (Edge Node)
-                                    │
-                            YOLOv8 + EasyOCR
-                                    │
-                    ┌───────────────┼───────────────┐
-                    │               │               │
-              Kafka Event     CARGOES TOS      Blockchain
-              Streaming       REST API         Audit Log
-                    │               │               │
-              Central         Freight           Dispute
-              Dashboard       Forwarder         Resolution
-```
-
----
 
 ## 🔧 Feature Breakdown
 
@@ -673,7 +631,7 @@ Dual-View Container Image Upload (2 images = 1 container) + Optional Cargo Docum
 ### Production-Addition Stack (Built for Scale)
 | Component | Technology |
 |---|---|
-| **Edge ML Pipeline** | Local YOLOv8 inference + PaddleOCR module explicitly included in source (`edge_ml_pipeline.py`) to prove zero-latency edge-deployment capabilities. Bypassed for live demo stability. |
+| **Edge ML Pipeline** | Mock Edge ML Pipeline module included in source (`edge_ml_pipeline.py`) as a structural placeholder for future local YOLOv8 + PaddleOCR integration. |
 | Edge AI Inference | NVIDIA Jetson Orin + YOLOv8 INT8 |
 | Message Streaming | Apache Kafka |
 | LLM Backend | GPT-4o / Gemini Pro + RAG |
@@ -844,90 +802,7 @@ streamlit run app.py --server.headless true --server.port 8501 --server.address 
 
 ---
 
-## 📖 Page-by-Page Guide
-
-### Navigating the App
-
-Use the **left sidebar** to:
-1. **Select your terminal** — Choose between Dubai, Mumbai, London, Karachi, or Dominican Republic
-2. **Switch language** — English, Arabic, or Hindi (UI simulation)
-3. **Navigate pages** — Click any of the 5 radio buttons
-
----
-
-### Page 1: Our World, Our Future - Impact Tracker
-
-1. Open the app → You are on the Dashboard by default
-2. View the **4 KPI metric cards** at the top
-3. Scroll down to see the **ESG targets** (carbon, safety, efficiency)
-4. View the **24-hour throughput bar chart**
-5. Expand the **data table** using the expander
-
----
-
-### Page 2: Gate Inspector (Dual-View Vision AI)
-
-1. Click **"Gate Inspector (Vision AI)"** in the sidebar
-2. Upload **View 1** (Left / Front Panel) — any JPG/PNG of a shipping container
-3. Upload **View 2** (Right / Rear Panel) — a second image of the **same container** from a different angle
-   - ⚠️ *Both images are required — analysis will not proceed with only one*
-   - 💡 *Use any 2 container images from Google Images to see the AI in action*
-4. *(Optional)* Expand the **"📄 Attach Cargo Document"** panel and upload a `PDF` Bill of Lading or Customs Manifest. The AI will look for hazmat/weight discrepancies.
-5. Wait for the **Dual-View Edge AI inference** spinner to complete
-6. View **both annotated images** with severity-coded bounding boxes:
-   - 🔴 Red/Orange box = Critical/Severe damage
-   - 🟡 Amber box = Moderate damage
-   - 🔵 Blue box = Minor damage
-   - Each detection is tagged with its source view (View 1 or View 2)
-7. Read the **Unified Inspection Result Card** on the right — single decision covering both views. Any PDF manifest discrepancies will appear in the final summary.
-8. Expand **"Full Edge AI Inspection Report"** to see the raw AI JSON output (includes `inspection_mode: dual-view`)
-
----
-
-### Page 5: Thermal Inspector (🌡️ Infrared AI)
-
-1. Click **"🌡️ Thermal Inspector"** in the sidebar
-2. Upload a **single thermal/infrared image** (or any container photo to see the visual inference)
-3. Wait for the **Thermal AI inference** spinner to complete
-4. View the **annotated thermal image** with severity-coded heat zones:
-   - 🔴 Deep red = Critical/Dangerous heat level
-   - 🟠 Orange = Severe heat anomaly
-   - 🟡 Yellow = Elevated heat/monitoring required
-   - 🔵 Cyan = Cold anomaly (potential insulation failure)
-5. Check the **Reefer System Status** indicator
-6. Read the **Thermal Inspection Result Card** to see the automated routing action
-7. Expand **"Full Thermal AI Inspection Report"** to see `inspection_mode: thermal` and specific heat delta estimates
-
----
-
-### Page 3: CARGOES Copilot (AI Chat) & Document Context
-
-1. Click **"Yard Copilot (AI Chat)"** in the sidebar
-2. *(Optional)* Expand **"📎 Attach Operational Document"** and upload a PDF document. You will see a success badge once the context is ingested into the AI's brain.
-3. Read the AI greeting message
-4. Type any of these queries in the chat input (or ask about your uploaded PDF):
-   - *"Show me damaged containers"*
-   - *"What's the current gate queue?"*
-   - *"Any hazmat alerts today?"*
-   - *"What is the vessel loading status?"*
-   - *"Show ESG metrics"*
-   - *"Generate a report"*
-4. Or click any of the **Quick Prompt buttons** below the chat
-5. The AI responds in ~1 second with TOS-grounded information
-
----
-
-### Page 4: Compliance Reports
-
-1. Click **"Compliance Reports"** in the sidebar
-2. Read the **business case** explaining the 3–5% error elimination
-3. Click **"Generate & Download Gate Audit Report"** — downloads a professional PDF report
-4. View the **compliance metrics table**
-5. Expand **"Live Audit Log"** to see last 20 inspection entries (each row = 1 container, regardless of how many images were used)
-
----
-
-## 🏗️ System Architecture Diagram
+## 🏗️ System Architecture
 
 ```
 ┌─────────────────── GATE ENTRY ZONE ───────────────────┐
