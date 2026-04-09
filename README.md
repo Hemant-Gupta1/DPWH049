@@ -142,15 +142,6 @@ DP World operates in **70+ countries**. VisionGate is built for global ubiquity 
 - **Weather-Aware Analysis**: Injects simulated terminal weather alerts directly into the AI pipeline, generating contextual vulnerabilities if structural damage and weather intersect.
 - **Unified Inspection Result Card**: Single result card covering both views — ISO 6346 validation, structural status, auto-routing decision, and any specific weather-related warnings.
 
-### Page 5 — Thermal Inspector (🌡️ Infrared AI)
-- **Single Image Upload**: Upload one thermal or infrared image per inspection. No dual-view required.
-- **Dedicated Thermal AI Prompt**: Completely separate Gemini prompt focused on thermal pattern recognition — hotspots, cold spots, reefer failures, insulation breaches, overheating cargo, and hazmat heat signatures.
-- **Thermal-Specific Bounding Boxes**: Heat-zone annotations with a thermal color scheme (deep red=critical, orange=severe, yellow=elevated, cyan=cold).
-- **Reefer System Status**: Dedicated assessment of refrigeration unit health (OPERATIONAL/DEGRADED/FAILED/NOT_APPLICABLE).
-- **Separate DB Records**: Logged with `inspection_type='thermal'` — never mixed with structural metrics.
-- **Thermal Inspection Result Card**: Thermal status, reefer status, heat zone detections, temperature delta estimates, and routing action.
-- **TOS Sync**: Thermal alerts synced to CARGOES TOS with reefer-specific IoT Gateway notifications.
-
 ### Page 3 — CARGOES Copilot (AI Chat) & Document RAG
 - **Attach Operational PDF (RAG)**: Users can upload PDF documents (like shipping manifests or hazmat regulations). The system instantly extracts the text and injects it into the AI's context window, allowing dynamic query responses grounded in the uploaded document.
 - **DP World Domain Persona**: AI is primed as the "DP World CARGOES AI Copilot", strictly adhering to safety protocols and the "Make Trade Flow" vision.
@@ -163,6 +154,15 @@ DP World operates in **70+ countries**. VisionGate is built for global ubiquity 
 - **Download Ship Delay Audit (Report 2)**: Exports a log of port traffic hold-ups alongside aggregated KPI math.
 - **Live Audit Log**: Renders a live Pandas dataframe fetched straight from the edge database.
 - **Regulatory framework**: ISO 6346, SOLAS VII, IMO FAL, IMDG compliance cards.
+
+### Page 5 — Thermal Inspector (🌡️ Infrared AI)
+- **Single Image Upload**: Upload one thermal or infrared image per inspection. No dual-view required.
+- **Dedicated Thermal AI Prompt**: Completely separate Gemini prompt focused on thermal pattern recognition — hotspots, cold spots, reefer failures, insulation breaches, overheating cargo, and hazmat heat signatures.
+- **Thermal-Specific Bounding Boxes**: Heat-zone annotations with a thermal color scheme (deep red=critical, orange=severe, yellow=elevated, cyan=cold).
+- **Reefer System Status**: Dedicated assessment of refrigeration unit health (OPERATIONAL/DEGRADED/FAILED/NOT_APPLICABLE).
+- **Separate DB Records**: Logged with `inspection_type='thermal'` — never mixed with structural metrics.
+- **Thermal Inspection Result Card**: Thermal status, reefer status, heat zone detections, temperature delta estimates, and routing action.
+- **TOS Sync**: Thermal alerts synced to CARGOES TOS with reefer-specific IoT Gateway notifications.
 
 ### Page 6 — Ship Delay Manager
 - **Actionable Logistics Control**: Allows terminal operators to explicitly assign hold-up states to flagged vessels.
@@ -401,80 +401,6 @@ The rich Gemini Vision severity labels are simplified for database storage and d
 
 ---
 
-### 🚢 Page 6 — Ship Delay Manager Metrics
-
-#### 18. Logistics Fleet Math
-
-| Metric | Formula / Logic |
-|---|---|
-| **Ship Delay DB Storage** | Isolated `ship_delays` Table strictly segregated from container audits. |
-| **Median Delay** | Custom python implementation evaluating standard middle-value aggregation (`statistics.median([logs])`). Superior for smoothing massive traffic extremes versus pure Average. |
-| **P95 Worst-case Delay** | `math.ceil(0.95 * len(sorted_delays)) - 1`. Extracts the 95th percentile, isolating the most severe 5% bottlenecks to satisfy top-level DP World fleet managers. |
-
----
-
-### 🌡️ Page 5 — Thermal Inspector Metrics & Detection Logic
-
-#### 17. Thermal AI Inference
-
-| Property | Value |
-|---|---|
-| **Model** | `gemini-2.5-flash` (Google DeepMind) |
-| **Input** | Single thermal/infrared container image (JPG/PNG) |
-| **Output** | Structured JSON: `iso_code`, `thermal_detections[]` (each with `zone`, `estimated_temp_delta`, `bbox_normalized`), `thermal_status`, `reefer_status`, `routing_action`, `summary` |
-| **Source** | `app.py → analyze_thermal_gemini()` |
-| **Key Behaviour** | Analyses heat patterns, hotspots, cold spots, and insulation integrity. Even works on regular photos by inferring thermal state from visual cues. |
-
-#### 18. Thermal Detection Classes
-
-| Detection Class | Description |
-|---|---|
-| `hotspot` | Abnormally high surface temperature zone |
-| `cold_spot` | Abnormally low temperature — possible insulation failure |
-| `insulation_breach` | Thermal bridge indicating wall/roof insulation damage |
-| `reefer_failure` | Refrigeration system malfunction detected via heat pattern |
-| `overheating_cargo` | Cargo generating excess heat (chemical reaction, electrical) |
-| `hazmat_heat` | Heat signature consistent with hazardous material reaction |
-| `thermal_gradient` | Unusual temperature gradient across container surface |
-
-#### 19. Thermal Status Mapping
-
-| Thermal Status | Meaning | Routing Action |
-|---|---|---|
-| `NORMAL` | No concerning heat patterns | `VESSEL_LOAD` |
-| `ELEVATED` | Minor anomalies worth monitoring | `INSPECTION_HOLD` |
-| `WARNING` | Significant heat anomalies | `MAINTENANCE_YARD` |
-| `CRITICAL` | Dangerous heat levels | `QUARANTINE` |
-
-#### 20. Reefer System Status
-
-| Reefer Status | Description |
-|---|---|
-| `OPERATIONAL` | Cooling systems functioning normally |
-| `DEGRADED` | Partial cooling failure — requires maintenance |
-| `FAILED` | Complete refrigeration failure — cargo at risk |
-| `NOT_APPLICABLE` | Container is not a refrigerated unit |
-
-#### 21. Thermal Bounding Box Color Scheme
-
-| Severity | RGB Color | Visual |
-|---|---|---|
-| `critical` | `(220, 20, 20)` | 🔴 Deep red — dangerous heat |
-| `severe` | `(255, 100, 0)` | 🟠 Orange — significant heat |
-| `moderate` | `(255, 200, 0)` | 🟡 Yellow — elevated |
-| `minor` | `(0, 200, 220)` | 🔵 Cyan — minor / cold anomaly |
-
-#### 22. Database Separation
-
-| Property | Value |
-|---|---|
-| **Column** | `inspection_type` (added to `container_logs` table) |
-| **Values** | `'structural'` (Gate Inspector) or `'thermal'` (Thermal Inspector) |
-| **Behaviour** | Dashboard structural metrics filter by `inspection_type='structural'`. Thermal metrics filter by `inspection_type='thermal'`. The two are **never mixed**. |
-| **Migration** | `ALTER TABLE` adds column with `DEFAULT 'structural'` for existing rows |
-
----
-
 ### 🤖 Page 3 — Yard Copilot Metrics
 
 #### 17. LLM Context Injection (RAG Pipeline)
@@ -544,6 +470,80 @@ This ensures the Copilot's responses are grounded in **real terminal data**, not
 | **With VisionGate** | All 14 disputes resolved in <24 hours using AI evidence |
 | **Source** | ICHCA International (2023) port terminal liability survey |
 | **Assumption** | Each paper-based dispute costs $20,000–$30,000 × 14 disputes = $280K–$420K |
+
+---
+
+### 🌡️ Page 5 — Thermal Inspector Metrics & Detection Logic
+
+#### 17. Thermal AI Inference
+
+| Property | Value |
+|---|---|
+| **Model** | `gemini-2.5-flash` (Google DeepMind) |
+| **Input** | Single thermal/infrared container image (JPG/PNG) |
+| **Output** | Structured JSON: `iso_code`, `thermal_detections[]` (each with `zone`, `estimated_temp_delta`, `bbox_normalized`), `thermal_status`, `reefer_status`, `routing_action`, `summary` |
+| **Source** | `app.py → analyze_thermal_gemini()` |
+| **Key Behaviour** | Analyses heat patterns, hotspots, cold spots, and insulation integrity. Even works on regular photos by inferring thermal state from visual cues. |
+
+#### 18. Thermal Detection Classes
+
+| Detection Class | Description |
+|---|---|
+| `hotspot` | Abnormally high surface temperature zone |
+| `cold_spot` | Abnormally low temperature — possible insulation failure |
+| `insulation_breach` | Thermal bridge indicating wall/roof insulation damage |
+| `reefer_failure` | Refrigeration system malfunction detected via heat pattern |
+| `overheating_cargo` | Cargo generating excess heat (chemical reaction, electrical) |
+| `hazmat_heat` | Heat signature consistent with hazardous material reaction |
+| `thermal_gradient` | Unusual temperature gradient across container surface |
+
+#### 19. Thermal Status Mapping
+
+| Thermal Status | Meaning | Routing Action |
+|---|---|---|
+| `NORMAL` | No concerning heat patterns | `VESSEL_LOAD` |
+| `ELEVATED` | Minor anomalies worth monitoring | `INSPECTION_HOLD` |
+| `WARNING` | Significant heat anomalies | `MAINTENANCE_YARD` |
+| `CRITICAL` | Dangerous heat levels | `QUARANTINE` |
+
+#### 20. Reefer System Status
+
+| Reefer Status | Description |
+|---|---|
+| `OPERATIONAL` | Cooling systems functioning normally |
+| `DEGRADED` | Partial cooling failure — requires maintenance |
+| `FAILED` | Complete refrigeration failure — cargo at risk |
+| `NOT_APPLICABLE` | Container is not a refrigerated unit |
+
+#### 21. Thermal Bounding Box Color Scheme
+
+| Severity | RGB Color | Visual |
+|---|---|---|
+| `critical` | `(220, 20, 20)` | 🔴 Deep red — dangerous heat |
+| `severe` | `(255, 100, 0)` | 🟠 Orange — significant heat |
+| `moderate` | `(255, 200, 0)` | 🟡 Yellow — elevated |
+| `minor` | `(0, 200, 220)` | 🔵 Cyan — minor / cold anomaly |
+
+#### 22. Database Separation
+
+| Property | Value |
+|---|---|
+| **Column** | `inspection_type` (added to `container_logs` table) |
+| **Values** | `'structural'` (Gate Inspector) or `'thermal'` (Thermal Inspector) |
+| **Behaviour** | Dashboard structural metrics filter by `inspection_type='structural'`. Thermal metrics filter by `inspection_type='thermal'`. The two are **never mixed**. |
+| **Migration** | `ALTER TABLE` adds column with `DEFAULT 'structural'` for existing rows |
+
+---
+
+### 🚢 Page 6 — Ship Delay Manager Metrics
+
+#### 18. Logistics Fleet Math
+
+| Metric | Formula / Logic |
+|---|---|
+| **Ship Delay DB Storage** | Isolated `ship_delays` Table strictly segregated from container audits. |
+| **Median Delay** | Custom python implementation evaluating standard middle-value aggregation (`statistics.median([logs])`). Superior for smoothing massive traffic extremes versus pure Average. |
+| **P95 Worst-case Delay** | `math.ceil(0.95 * len(sorted_delays)) - 1`. Extracts the 95th percentile, isolating the most severe 5% bottlenecks to satisfy top-level DP World fleet managers. |
 
 ---
 
@@ -737,9 +737,11 @@ You should see `(venv)` at the start of your terminal prompt.
 ### Step 3 — Setup Environment Variables
 
 1. Create a `.env` file in the root folder.
-2. Add your Gemini API Key manually like this:
+2. Add your API keys and Email credentials manually like this:
    ```env
-   GEMINI_API_KEY=your_actual_api_key_here
+   GEMINI_API_KEY = ""
+   SENDER_EMAIL = ""
+   EMAIL_APP_PASSWORD = ""
    ```
 
 ### Step 4 — Install Dependencies
@@ -966,15 +968,23 @@ streamlit run app.py --server.port 8502
 
 ```text
 VisionGate-AI/
-├── app.py                  # Main Python Streamlit application containing UI and logic
-├── edge_ml_pipeline.py     # Production Edge ML Architecture (YOLOv8 + PaddleOCR module)
-├── db_utils.py             # SQLite DB layer handling persistence and live metrics
-├── visiongate.db           # Local SQLite database (Auto-generated on first run)
-├── requirements.txt        # Full updated dependencies list including fpdf2
-├── README.md               # Extensive project documentation
-├── .env                    # Secure API Key environment variables (ignored by Git)
-├── .gitignore              # Ignores sensitive data (DB files, environment variables)
-└── .streamlit/             # Streamlit specific configuration and styling
+├── app.py                            # Main Python Streamlit application containing UI and logic
+├── db_utils.py                       # SQLite DB layer handling persistence and live metrics
+├── edge_ml_pipeline.py               # Production Edge ML Architecture (YOLOv8 + PaddleOCR module)
+├── requirements.txt                  # Full updated dependencies list including fpdf2
+├── README.md                         # Extensive project documentation
+├── FAQs.txt                          # Frequently asked questions for the project
+├── Sample_doc.pdf                    # Sample cargo manifest/document for testing Document AI
+├── app_code_walkthrough.txt          # Detailed code walkthrough of app.py
+├── db_utils_code_walkthrough.txt     # Detailed code walkthrough of db_utils.py
+├── features_implementation.txt       # Explanations of how features are implemented
+├── models.txt                        # Information about AI models used
+├── video.txt                         # Video demonstration link
+├── images/                           # Directory containing images and screenshots
+├── visiongate.db                     # Local SQLite database (Auto-generated on first run)
+├── .env                              # Secure environment variables configuration
+├── .gitignore                        # Git ignore file for sensitive/unwanted data
+└── venv/                             # Virtual environment directory
 ```
 
 ---
